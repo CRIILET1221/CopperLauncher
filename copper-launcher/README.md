@@ -1,14 +1,18 @@
-# Copper Launcher
+# Copper Launcher source
 
-Independent modified fork of [Millida Launcher](https://github.com/millida/launcher), licensed GPL-3.0-only. Focus: local Minecraft instances, Microsoft/Ely/offline accounts and direct Modrinth catalog.
+The launcher frontend and Tauri backend for Copper. Read the [repository README](../README.md) for features, downloads and complete Windows build instructions.
 
-## Build
-
-Requires Bun, Rust, Windows C++ Build Tools (x64/x86 MSVC + Windows SDK).
+From this folder:
 
 ```powershell
 bun install
 bun run tauri build
 ```
 
-For the custom Copper installer use the sibling copper-installer/build.ps1. Read COPPER-CHANGES.md for validation, compatibility notes and OAuth client configuration. Original notices remain in LICENSE, NOTICE, TRADEMARK.md and THIRD-PARTY.md.
+To build the custom installer after compiling the launcher:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\copper-installer\build.ps1 -UseExistingLauncher
+```
+
+License: GPL-3.0-only. See [LICENSE](LICENSE), [NOTICE](NOTICE) and the repository [licensing summary](../LICENSING.md).

@@ -1,49 +1,77 @@
-# Copper Launcher
+<p align="center"><img src="copper-launcher/public/copper-app-icon.png" width="96" alt="Copper Launcher icon"></p>
 
-Независимый форк [Millida Launcher](https://github.com/millida/launcher) на React + Tauri. Пиксельный интерфейс, локальные инстансы Minecraft и каталог Modrinth.
+<h1 align="center">Copper Launcher</h1>
+<p align="center">A Minecraft launcher focused on your instances, with a pixel-style interface.</p>
+<p align="center"><a href="https://github.com/CRIILET1221/CopperLauncher/releases/latest">Download for Windows</a> · <a href="#build-from-source">Build from source</a> · <a href="LICENSING.md">License</a></p>
 
-## Скачать
+Copper is an independent fork of [Millida Launcher](https://github.com/millida/launcher), built with React, TypeScript, Rust and Tauri. It keeps the Minecraft-inspired look while simplifying the launcher around local instances and game launching.
 
-[Скачать установщик для Windows](https://github.com/CRIILET1221/CopperLauncher/releases/latest/download/Copper-Setup.exe) · [Все релизы](https://github.com/CRIILET1221/CopperLauncher/releases)
+## Features
 
-Установщик устанавливает Copper для текущего пользователя и включает отдельный деинсталлятор. Нужен Microsoft Edge WebView2 Runtime. Бинарник не подписан. Это первая экспериментальная версия форка; полный цикл установки, удаления и запуска игры ещё требует проверки.
+- **Local instances** — create separate Minecraft setups, import modpacks and browse Modrinth.
+- **Quick Start** — choose an instance and launch it from the main screen.
+- **Accounts** — Microsoft, Ely.by and offline profiles.
+- **Skin library** — drop a 64×64 or 64×32 PNG into the skin window, preview it in 3D and save it locally. Pick saved skins using face thumbnails.
+- **Copper installer** — a Windows installer and separate uninstaller with a matching interface.
 
-## Возможности
+The fork removes the original advertising, shop and subscription entry points, mandatory service login, launcher music, social notifications, chat, clips and cloud section. The original telemetry integration and automatic installation of its cosmetic mods have also been removed. See [the change notes](copper-launcher/COPPER-CHANGES.md) for details and remaining compatibility code.
 
-- Локальные инстансы, импорт сборок и каталог Modrinth.
-- Microsoft, Ely.by и офлайн-аккаунты.
-- 3D-предпросмотр скина, перетаскивание PNG и локальная коллекция с миниатюрами лиц.
-- Удалены рекламные и платные разделы, принудительный вход через сервис исходного лаунчера, музыка, социальные уведомления, чат, клипы и облачный раздел.
-- Удалены подключение телеметрии и автоматическая установка модов исходного лаунчера. Оставшиеся служебные модули описаны в [COPPER-CHANGES.md](copper-launcher/COPPER-CHANGES.md). Это не полный аудит всех зависимостей.
+## Download and install
 
-## Исходники
+Download **[Copper-Setup.exe](https://github.com/CRIILET1221/CopperLauncher/releases/latest/download/Copper-Setup.exe)** from [GitHub Releases](https://github.com/CRIILET1221/CopperLauncher/releases).
 
-| Папка | Назначение |
-| --- | --- |
-| copper-launcher | Лаунчер |
-| copper-installer | Установщик Copper-Setup.exe |
-| copper-uninstaller | Деинсталлятор Uninstall.exe |
+Run the installer, choose a folder and install Copper for your Windows user. The installer includes the separate uninstaller. Uninstall the previous version before installing an update; game data is kept separately from the application.
 
-## Сборка Windows
+Microsoft Edge WebView2 Runtime is required. The executable is currently unsigned.
 
-Нужны Bun, Node.js, Rust и Visual Studio Build Tools с MSVC x64/x86 и Windows SDK.
+**Development status:** this is an early fork. Full installation/uninstallation and game-launch testing are still in progress. Microsoft skin changes need further verification in-game. Removing the original telemetry integration does not amount to a security audit of every dependency.
+
+## Build from source
+
+### Requirements
+
+- Windows with Visual Studio Build Tools: **MSVC x64/x86** and a **Windows SDK**.
+- [Bun](https://bun.sh), [Node.js](https://nodejs.org) and [Rust](https://rustup.rs).
+
+### Launcher
+
+Clone the repository, then build the launcher:
 
 ```powershell
-cd copper-launcher
+git clone https://github.com/CRIILET1221/CopperLauncher.git
+cd CopperLauncher\copper-launcher
 bun install
 bun run tauri build
 ```
 
-Для сборки нашего установщика из папки copper-launcher:
+The launcher executable is generated in `copper-launcher/src-tauri/target/release/copper-launcher.exe`.
+
+### Copper installer
+
+After building the launcher, run this from the `copper-launcher` folder:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ..\copper-installer\build.ps1 -UseExistingLauncher
 ```
 
-Готовый Copper-Setup.exe появится в корне репозитория. Без -UseExistingLauncher скрипт сначала пересоберёт лаунчер. Папки исходников должны оставаться рядом.
+This builds the uninstaller and packages the compiled launcher into **Copper-Setup.exe** in the repository root. Omit `-UseExistingLauncher` to rebuild the launcher first. Keep the three source folders next to each other.
 
-Параметры собственных OAuth-приложений: COPPER_MS_CLIENT_ID и COPPER_ELY_CLIENT_ID; подробности в [COPPER-CHANGES.md](copper-launcher/COPPER-CHANGES.md). В текущей сборке сохранены совместимые идентификаторы регистрации исходного проекта. Смена скина через Microsoft требует действующего аккаунта Minecraft Java; подтверждение работы скина в игре ещё проверяется.
+### Authentication configuration
 
-## Лицензия
+Configure your own OAuth applications using `COPPER_MS_CLIENT_ID` and `COPPER_ELY_CLIENT_ID` before distributing your own builds. The current code retains legacy registration defaults; these are not Copper-owned registrations. See [the configuration notes](copper-launcher/COPPER-CHANGES.md) and the preserved [upstream trademark/service notice](TRADEMARK.md).
 
-GPL-3.0-only. Сохранены авторство исходного проекта и уведомления в LICENSE, NOTICE, THIRD-PARTY.md и TRADEMARK.md. Copper не связан с Millida, Mojang или Microsoft.
+## Repository layout
+
+| Folder | Contents |
+| --- | --- |
+| [copper-launcher](copper-launcher) | Launcher UI and native backend |
+| [copper-installer](copper-installer) | Custom Windows installer |
+| [copper-uninstaller](copper-uninstaller) | Separate Windows uninstaller |
+
+## License and credits
+
+Copper is distributed under **GPL-3.0-only**, inherited from the original project. See [LICENSE](LICENSE) for the full terms, [LICENSING.md](LICENSING.md) for the project summary and [NOTICE](NOTICE) for attribution.
+
+Original project: **Millida Launcher**. Copper fork maintained by **[CRIILET1221](https://github.com/CRIILET1221)**. Third-party notices and bundled font licenses are preserved.
+
+Copper is not affiliated with or endorsed by Millida, Mojang or Microsoft. Minecraft names and assets remain subject to their respective owners' rights.

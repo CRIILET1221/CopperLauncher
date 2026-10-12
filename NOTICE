@@ -1,5 +1,10 @@
-Copper Launcher — modified fork, 12 October 2026.
-Not affiliated with or endorsed by Millida. Original notices follow.
+Copper Launcher
+Independent modified fork of Millida Launcher, first modified 12 October 2026.
+Copper fork maintained by CRIILET1221: https://github.com/CRIILET1221/CopperLauncher
+This maintainer credit does not replace the original copyright notices.
+Copper is not affiliated with or endorsed by Millida.
+
+Original project notices:
 
 Millida Launcher
 Copyright (C) 2024-2026 Millida
@@ -21,7 +26,7 @@ that apply to forks and redistributions.
 
 Third-party components bundled with or linked into this program keep their own
 licenses; they are listed in THIRD-PARTY.md. Bundled fonts are licensed under
-the SIL Open Font License 1.1 — see public/fonts/OFL.txt.
+the SIL Open Font License 1.1 — see copper-launcher/public/fonts/OFL.txt (or public/fonts/OFL.txt within the launcher source).
 
 Minecraft is a trademark of Mojang Synergies AB / Microsoft. This project is
 not affiliated with, endorsed by or sponsored by Mojang or Microsoft.
