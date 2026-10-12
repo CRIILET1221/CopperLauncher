@@ -140,6 +140,12 @@ fn launch(path:String)->Result<(),String>{
     if !root.join("installed-files.json").is_file(){return Err("Установка не найдена".into())}
     Command::new(root.join("Copper.exe")).current_dir(root).spawn().map_err(|e|e.to_string())?;Ok(())
 }
-fn main(){tauri::Builder::default().invoke_handler(tauri::generate_handler![default_path,choose_folder,close_setup,install,launch])
+#[tauri::command]
+fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_focus();
+    Ok(())
+}
+fn main(){tauri::Builder::default().invoke_handler(tauri::generate_handler![startup_ready,default_path,choose_folder,close_setup,install,launch])
     .on_window_event(|_,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event {if BUSY.load(Ordering::SeqCst){api.prevent_close();}}})
     .run(tauri::generate_context!()).expect("Copper Setup could not start");}

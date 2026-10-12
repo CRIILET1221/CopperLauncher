@@ -6,7 +6,7 @@
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "title": "Удаление Copper", "width": 760, "height": 560, "resizable": false, "decorations": false, "center": true, "backgroundColor": "#151b18" }],
+    "windows": [{ "title": "Удаление Copper", "width": 760, "height": 560, "resizable": false, "decorations": false, "center": true, "backgroundColor": "#151b18", "visible": false }],
     "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost" }
   },
   "bundle": { "active": false, "icon": ["icons/icon.ico", "icons/icon.png"] }

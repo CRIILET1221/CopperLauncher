@@ -209,8 +209,12 @@ pub fn update_fallback_run(
 
 /// Liveness ping from the webview; without it the self-heal path kicks in.
 #[tauri::command]
-pub fn frontend_ready() {
+pub fn frontend_ready(window: tauri::WebviewWindow) {
     engine::mark_frontend_ready();
+    if window.label() == "main" && !(started_by_os() && crate::tray::available()) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 #[tauri::command]

@@ -124,9 +124,15 @@ fn cleanup_temp(path:&Path) {
     let _=Command::new("powershell.exe").creation_flags(0x08000000).args(["-NoProfile","-NonInteractive","-Command",script])
         .current_dir(std::env::temp_dir()).env("COPPER_CLEANUP_FILE",path).env("COPPER_CLEANUP_PID",std::process::id().to_string()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
 }
+#[tauri::command]
+fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_focus();
+    Ok(())
+}
 fn main() {
     let (root,temp)=match temporary_copy() { Ok((root,temp))=>(Ok(root),temp),Err(e)=>(Err(e),None) };
-    let app=tauri::Builder::default().manage(Installation(root)).invoke_handler(tauri::generate_handler![installation_path,uninstall,close_uninstaller])
+    let app=tauri::Builder::default().manage(Installation(root)).invoke_handler(tauri::generate_handler![startup_ready,installation_path,uninstall,close_uninstaller])
         .on_window_event(|_,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event {if BUSY.load(Ordering::SeqCst){api.prevent_close();}}})
         .build(tauri::generate_context!()).expect("Copper Uninstall could not start");
     app.run(move|_,event|{if let tauri::RunEvent::Exit=event { if let Some(path)=&temp {cleanup_temp(path);} }});

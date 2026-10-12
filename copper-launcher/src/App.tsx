@@ -29,7 +29,7 @@ import { hasTauri,tauri } from './ipc/tauri'
 import { initAccent } from './lib/accent'
 import { SESSION_EXPIRED_EVENT,api,hasCopperAccount } from './lib/api'
 import { initAutostart } from './lib/autostart'
-import { hideBoot } from './lib/boot'
+import { hideBoot, showBootWindow } from './lib/boot'
 import { parseCallLog } from './lib/call/callLog'
 import { flushNativeCrashes,installErrorHandlers } from './lib/crash'
 import { initDeepLinks } from './lib/deeplink'
@@ -264,7 +264,7 @@ export function App() {
   useEffect(() => {
     // Until this lands, the native watchdog treats the window as blank and
     // reinstalls the launcher.
-    void frontendReady()
+    void showBootWindow(frontendReady)
     installErrorHandlers()
 
     void initAccent()
