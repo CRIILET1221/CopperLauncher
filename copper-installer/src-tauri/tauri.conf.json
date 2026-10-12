@@ -6,7 +6,7 @@
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "title": "Установка Copper", "width": 900, "height": 620, "resizable": false, "decorations": false, "center": true }],
+    "windows": [{ "title": "Установка Copper", "width": 900, "height": 620, "resizable": false, "decorations": false, "center": true, "backgroundColor": "#151b18" }],
     "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost" }
   },
   "bundle": { "active": false, "icon": ["icons/icon.ico", "icons/icon.png"] }

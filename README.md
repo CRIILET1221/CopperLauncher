@@ -12,6 +12,7 @@ Copper is an independent fork of [Millida Launcher](https://github.com/millida/l
 - **Quick Start** — choose an instance and launch it from the main screen.
 - **Accounts** — Microsoft, Ely.by and offline profiles.
 - **Skin library** — drop a 64×64 or 64×32 PNG into the skin window, preview it in 3D and save it locally. Pick saved skins using face thumbnails.
+- **Startup screen** — a centered copper block on the dark Copper background, shared by the launcher, installer and uninstaller.
 - **Copper installer** — a Windows installer and separate uninstaller with a matching interface.
 
 The fork removes the original advertising, shop and subscription entry points, mandatory service login, launcher music, social notifications, chat, clips and cloud section. The original telemetry integration and automatic installation of its cosmetic mods have also been removed. See [the change notes](copper-launcher/COPPER-CHANGES.md) for details and remaining compatibility code.

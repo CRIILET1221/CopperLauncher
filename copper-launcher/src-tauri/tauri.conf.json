@@ -21,6 +21,7 @@
         "minHeight": 640,
         "decorations": false,
         "transparent": false,
+        "backgroundColor": "#151b18",
         "center": true,
         "acceptFirstMouse": true
       }

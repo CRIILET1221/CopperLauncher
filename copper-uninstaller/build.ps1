@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $launcher=Join-Path (Split-Path $project) 'copper-launcher'
 $cli=Join-Path $launcher 'node_modules/@tauri-apps/cli/tauri.js'
+Copy-Item -LiteralPath "$launcher/public/copper-brand-v2.png" -Destination "$project/ui/startup-block.png" -Force
 if(!(Test-Path -LiteralPath $cli)){throw 'Сначала выполните bun install в папке copper-launcher.'}
 Copy-Item -LiteralPath "$launcher/public/copper-app-icon.png" -Destination "$project/ui" -Force
 Copy-Item -LiteralPath "$launcher/public/fonts/Geist-Variable.woff2" -Destination "$project/ui/fonts" -Force

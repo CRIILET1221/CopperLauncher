@@ -2,7 +2,8 @@
   "app": {
     "windows": [
       {
-        "title": "Millida Launcher",
+        "title": "Copper Launcher",
+        "backgroundColor": "#151b18",
         "width": 1200,
         "height": 760,
         "minWidth": 980,
