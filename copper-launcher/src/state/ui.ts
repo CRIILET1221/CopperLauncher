@@ -94,7 +94,7 @@ const closeTimers: Partial<Record<ModalId, ReturnType<typeof setTimeout>>> = {}
 
 export const useUi = create<UiState>((set, get) => ({
   logged: true,
-  screen: 'builds',
+  screen: 'play',
   toastMsg: 'Скопировано',
   toastKind: 'ok',
   toastShow: false,
