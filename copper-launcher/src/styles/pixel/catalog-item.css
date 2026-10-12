@@ -1,0 +1,260 @@
+/* ============================================================
+   СТРАНИЦА МАТЕРИАЛА КАТАЛОГА (30.09.2026) — components/catalog/ItemPage.tsx
+   Шапка: обложка полосой, значок, название, автор, факты, цена и кнопки.
+   Ниже — вкладки «Описание | Галерея | Версии» слева и колонка выбора
+   версии, совместимости и меток справа. Пиксельный язык: подложки — .card
+   (срез 10px и ступенчатая рамка из 12-pixel.css), чипы — срез 4px.
+   ============================================================ */
+
+.ci { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding-bottom: 32px; }
+
+.ci-crumbs { display: flex; align-items: center; gap: 12px; }
+.ci-back { gap: 6px; }
+.ci-back svg { width: 12px; height: 12px; }
+.ci-crumb { font-size: 13px; font-weight: 700; color: var(--m-fg-subtle); }
+
+/* ── Шапка ── */
+.card.ci-hero { padding: 0; overflow: hidden; background-color: var(--m-surface); }
+.ci-banner { position: relative; height: 180px; overflow: hidden; background: var(--m-surface-2); }
+.ci-banner > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ci-banner.is-art .mr-fallback > img { width: 120px; }
+.ci-head { position: relative; display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 18px; align-items: end; padding: 0 20px 18px; }
+.ci-icon { position: relative; display: block; width: 96px; height: 96px; margin-top: -40px; overflow: hidden; background: var(--m-surface-2); --px-n: 5px; clip-path: var(--px-5); }
+.ci-icon > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ci-icon .mr-fallback > img { width: 64%; }
+.ci-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 12px; }
+.ci-h1 { margin: 0; font: 800 26px/1.15 var(--m-font); letter-spacing: -0.02em; color: var(--m-fg); overflow-wrap: anywhere; }
+.ci-by { font-size: 14px; font-weight: 600; color: var(--m-fg-subtle); }
+.ci-line { font-size: 14px; color: var(--m-fg-muted); }
+.ci-banner > .ph-card-tag { z-index: 2; top: 12px; left: 12px; }
+
+.ci-hero.is-premium .ci-banner { height: clamp(220px, 36vh, 360px); }
+.ci-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--m-fg-muted); }
+.ci-facts li { display: inline-flex; align-items: center; gap: 5px; }
+.ci-facts b { color: var(--m-fg); font-variant-numeric: tabular-nums; }
+.ci-facts svg { width: 13px; height: 13px; }
+.ci-sec-ic { display: inline-flex; }
+.ci-warn { display: inline-flex; align-items: center; gap: 5px; color: var(--m-warning); font-weight: 700; }
+.ci-cta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 12px; }
+.ci-cta .mr-actions { margin: 0; flex-wrap: wrap; justify-content: flex-end; }
+.ci-cta .mr-actions .btn { height: 40px; padding: 0 16px; font-size: 14px; }
+.ci-cta .mr-actions .btn svg { width: 14px; height: 14px; }
+.ci-cta .mr-price { font-size: 22px; }
+
+/* ── Тело: вкладки слева, колонка справа ── */
+.ci-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+.ci-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ci-aside { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ci .segs.ci-tabs { justify-content: flex-start; margin: 0; }
+.ci-n { margin-left: 6px; font-size: 11.5px; font-weight: 800; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+
+.card.ci-box { padding: 16px 18px; background-color: var(--m-surface); }
+.ci-box-h { margin: 0 0 10px; font: 800 14px/1 var(--m-font); color: var(--m-fg); }
+.ci-desc { font-size: 14px; line-height: 1.6; color: var(--m-fg-muted); }
+.ci-desc h2, .ci-desc h3 { color: var(--m-fg); font-size: 16px; margin: 18px 0 6px; }
+.ci-desc > :first-child { margin-top: 0; }
+.ci-desc img { max-width: 100%; height: auto; }
+.ci-retry { margin-top: 12px; }
+.ci-skel { display: flex; flex-direction: column; gap: 10px; }
+
+/* Галерея: плитки 16:9, по клику — просмотр на весь экран. */
+.ci-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ci-shot { position: relative; display: block; aspect-ratio: 16 / 9; padding: 0; border: 0; overflow: hidden; background: var(--m-surface-2); cursor: zoom-in; --px-n: 5px; clip-path: var(--px-5); }
+.ci-shot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--m-t-base) ease; }
+.ci-shot:hover > img { transform: scale(1.04); }
+
+/* Версии: строка на файл. */
+.ci-vers { display: flex; flex-direction: column; gap: 6px; }
+.ci-ver {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.9fr) 64px 110px auto; gap: 12px; align-items: center;
+  min-height: 48px; padding: 6px 8px 6px 14px; font-size: 13px; color: var(--m-fg-muted); background: var(--m-surface);
+  --px-n: 5px; clip-path: var(--px-5);
+}
+.ci-ver-name { color: var(--m-fg); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-ver-game, .ci-ver-ld { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-ver-size, .ci-ver-date { color: var(--m-fg-subtle); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ci-ver .btn svg { width: 12px; height: 12px; }
+.ci-more { align-self: center; margin-top: 4px; }
+
+/* Выбор версии. */
+.ci-pick { display: flex; flex-direction: column; gap: 10px; }
+.ci-pick .ci-box-h { margin: 0; }
+.ci-pick .m-select { width: 100%; }
+.segs.ci-loaders { gap: 4px; flex-wrap: wrap; }
+.ci-loaders .seg { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; font-size: 13px; font-weight: 700; color: var(--m-fg-muted); background-color: var(--m-surface-2); }
+:root:root .ci-loaders .seg.on { color: var(--px-on-accent); background-color: var(--m-accent); --px-ft: var(--px-btn-t); --px-fb: var(--px-btn-b); }
+.ci-file { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; font-size: 12.5px; background: var(--m-inset); --px-n: 5px; clip-path: var(--px-5); }
+.ci-file.is-none { color: var(--m-fg-subtle); }
+.ci-file-name { min-width: 0; color: var(--m-fg); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-file-size { flex: none; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.ci-pick-go { width: 100%; justify-content: center; }
+.ci-pick-go svg { width: 13px; height: 13px; }
+
+/* Чипы совместимости и меток. */
+.ci-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ci-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px;
+  font-size: 12.5px; font-weight: 700; color: var(--mk-tone, var(--m-fg)); background: var(--m-surface-2);
+  --px-n: 4px; clip-path: var(--px-4); white-space: nowrap;
+}
+.ci-chip.is-accent { color: var(--m-accent); }
+.ci-chip.is-soft { color: var(--m-fg-muted); font-weight: 600; }
+.ci-chip svg { width: 12px; height: 12px; }
+.ci-site { align-self: flex-start; gap: 6px; }
+.ci-site svg { width: 12px; height: 12px; }
+
+.ci-similar { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.ci-sim-h { margin: 0; font: 800 18px/1 var(--m-font); color: var(--m-fg); }
+
+/* Скин: рендер во весь рост слева, имя и кнопки справа. */
+.ci-skin { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.card.ci-skin-stage { position: relative; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; background-color: var(--m-surface-2); }
+.ci-skin-stage > img { position: absolute; inset: 8%; width: 84%; height: 84%; object-fit: contain; image-rendering: pixelated; }
+.ci-skin-side { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.ci-skin-side .mr-actions { margin: 4px 0 0; }
+.ci-skin-side .btn { height: 40px; padding: 0 16px; }
+
+@media (max-width: 1100px) {
+  .ci-grid { grid-template-columns: minmax(0, 1fr) 260px; }
+  .ci-ver { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 64px auto; }
+  .ci-ver-ld, .ci-ver-date { display: none; }
+}
+@media (max-width: 860px) {
+  .ci-grid { grid-template-columns: minmax(0, 1fr); }
+  .ci-aside { order: -1; }
+  .ci-head { grid-template-columns: 72px minmax(0, 1fr); }
+  .ci-icon { width: 72px; height: 72px; }
+  .ci-cta { grid-column: 1 / -1; align-items: stretch; }
+  .ci-cta .mr-actions { justify-content: flex-start; }
+  .ci-skin { grid-template-columns: minmax(0, 1fr); }
+}
+.ci-chip.is-link { border: 0; cursor: pointer; font-family: inherit; }
+.ci-chip.is-link:hover { background: var(--m-raised); }
+
+/* ── Бесплатная сборка Copper в виде страницы материала (PackPage, 05.10.2026) ── */
+.pp-ci .ci-banner { height: 220px; }
+.pp-ci .ci-banner .pp-play { width: 64px; height: 64px; }
+.pp-ci .ci-desc.pp-desc { max-height: none; overflow: visible; }
+.pp-ci .ci-desc.pp-desc::after { display: none; }
+.pp-ci-lead { font-size: 15px; font-weight: 600; color: var(--m-fg); }
+.pp-ci-side, .pp-ci-buy { display: flex; flex-direction: column; gap: 10px; }
+.pp-ci-buy .pp-cta-wrap, .pp-ci-buy .pp-cta { width: 100%; }
+.pp-ci .pp-legal { padding: 0 4px; }
+
+/* ── Мини-плеер над описанием (MediaStrip, 05.10.2026): кадр 16:9 и миниатюры ── */
+.card.ci-media { display: flex; flex-direction: column; gap: 8px; padding: 8px; background-color: var(--m-surface); }
+.ci-media-stage { position: relative; aspect-ratio: 16 / 9; max-height: 380px; overflow: hidden; background: #000; --px-n: 5px; clip-path: var(--px-5); }
+.ci-media-frame { position: absolute; inset: 0; display: block; padding: 0; border: 0; cursor: zoom-in; background: #000; }
+.ci-media-frame.is-video { cursor: pointer; }
+.ci-media-frame > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: ci-media-in 360ms var(--m-ease-smooth) both; }
+@keyframes ci-media-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+.ci-media-video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.ci-media-play {
+  position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; translate: -50% -50%; display: grid; place-items: center;
+  color: #fff; background: rgba(0, 0, 0, 0.6); --px-n: 5px; clip-path: var(--px-5); transition: transform 120ms var(--m-ease-smooth), background-color 120ms;
+}
+.ci-media-play svg { width: 30px; height: 30px; }
+.ci-media-frame.is-video:hover .ci-media-play { transform: scale(1.08); background: var(--m-accent); color: var(--px-on-accent); }
+.ci-media-nav {
+  position: absolute; top: 50%; translate: 0 -50%; z-index: 1; width: 40px; height: 40px; display: grid; place-items: center; border: 0; cursor: pointer;
+  color: #fff; background: rgba(0, 0, 0, 0.55); --px-n: 4px; clip-path: var(--px-4); opacity: 0; transition: opacity 120ms var(--m-ease-smooth), background-color 120ms;
+}
+.ci-media-nav svg { width: 16px; height: 16px; }
+.ci-media-nav.is-prev { left: 10px; }
+.ci-media-nav.is-next { right: 10px; }
+.ci-media-stage:hover .ci-media-nav, .ci-media-nav:focus-visible { opacity: 1; }
+.ci-media-nav:hover { background: rgba(0, 0, 0, 0.8); }
+.ci-media-n { position: absolute; right: 10px; bottom: 10px; padding: 4px 8px; font: 800 11.5px/1 var(--m-font); color: #fff; background: rgba(0, 0, 0, 0.55); --px-n: 4px; clip-path: var(--px-4); font-variant-numeric: tabular-nums; pointer-events: none; }
+.ci-media-thumbs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.ci-media-thumb {
+  position: relative; aspect-ratio: 16 / 9; padding: 0; border: 0; overflow: hidden; cursor: pointer; background: var(--m-surface-2);
+  --px-n: 4px; clip-path: var(--px-4); opacity: 0.6; transition: opacity 120ms var(--m-ease-smooth);
+}
+.ci-media-thumb > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ci-media-thumb:hover { opacity: 0.9; }
+.ci-media-thumb.on { opacity: 1; box-shadow: inset 0 0 0 3px var(--m-accent); }
+.ci-media-thumb.on > img { inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); }
+.ci-media-tplay, .ci-media-more { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: rgba(0, 0, 0, 0.45); font: 800 16px/1 var(--m-font); }
+.ci-media-tplay svg { width: 18px; height: 18px; }
+.ci-media-more { background: rgba(0, 0, 0, 0.6); }
+@media (prefers-reduced-motion: reduce) { .ci-media-frame > img { animation: none; } }
+/* Плеер всегда во всю ширину: высота от ширины (16:9), но не выше 400 px; кадр целиком по центру */
+.card.ci-media { container-type: inline-size; }
+.ci-media-stage { aspect-ratio: auto; width: 100%; max-height: none; height: min(400px, calc((100cqi - 16px) * 9 / 16)); }
+.ci-media-frame > img.ci-media-img { object-fit: contain; }
+.ci-media-frame > img.ci-media-bg { object-fit: cover; filter: blur(18px) brightness(0.45) saturate(1.2); transform: scale(1.1); animation: none; }
+
+/* Шапка без обложки (06.10.2026): полосы нет, значок стоит в строке, за ним — мягкое свечение его же цветов */
+.ci-hero.is-flat { position: relative; isolation: isolate; }
+.ci-hero.is-flat .ci-head { align-items: center; padding-top: 20px; padding-bottom: 20px; }
+.ci-hero.is-flat .ci-icon { margin-top: 0; }
+.ci-hero.is-flat .ci-titles, .ci-hero.is-flat .ci-cta { padding-top: 0; }
+.ci-glow {
+  position: absolute; z-index: -1; left: -6%; top: -60%; width: 60%; height: 220%; pointer-events: none;
+  background-size: cover; background-position: center; filter: blur(48px) saturate(1.4); opacity: 0.32;
+  -webkit-mask: radial-gradient(closest-side, #000, transparent); mask: radial-gradient(closest-side, #000, transparent);
+}
+/* Размытие большого кадра в WebKit рисуется долго (кадры «не прорисовывались»): фон — тот же кадр
+   без фильтра, приглушён прозрачностью на чёрном. Пока кадр грузится — ровный тёмный фон, не дыра. */
+.ci-media-frame > img.ci-media-bg { filter: none; transform: scale(1.15); opacity: 0.22; }
+.ci-banner { background: var(--m-surface-2); }
+.ci-ru-lead { font-size: 15px; line-height: 1.55; color: var(--m-fg); margin-bottom: 12px; }
+.ci-orig-h { margin: 6px 0 8px; padding-top: 12px; border-top: 1px solid var(--m-border); font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--m-fg-subtle); }
+/* Описание по-русски: переключатель языка, ожидание перевода, картинки по ширине */
+.ci-lang { float: right; margin: 0 0 8px 12px; padding: 4px 10px; border: 0; cursor: pointer; font: 700 12px var(--m-font); color: var(--m-fg-muted); background: var(--m-surface-2); --px-n: 4px; clip-path: var(--px-4); }
+.ci-lang:hover { color: var(--m-fg); }
+.ci-tr-wait { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.ci-desc img { display: block; max-width: 100%; height: auto; margin: 12px auto; }
+
+/* ── Каркас страницы сборки (PackPageSkeleton): та же раскладка, что у страницы ── */
+.pp-skel-fill { display: block; width: 100%; height: 100%; }
+.pp-skel-by { display: inline-block; width: 140px; height: 12px; }
+.pp-skel-fact { display: inline-block; width: 90px; height: 12px; }
+.pp-skel-cta { display: block; width: 190px; height: 40px; }
+.pp-skel-tab { display: inline-block; width: 84px; height: 14px; margin: 9px 10px; }
+.pp-skel-media { height: min(400px, calc((100cqi - 16px) * 9 / 16)); min-height: 220px; margin-bottom: 12px; padding: 0; }
+.pp-skel-side { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.pp-skel-plan { display: block; height: 58px; }
+
+/* ══ Скины: сетка с метками и страница скина в 3D (10.10.2026) ══ */
+.sk-chips { display: flex; gap: 6px; margin: 0 0 14px; padding: 0 0 6px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--m-surface-2) transparent; }
+.sk-chip { flex: none; height: 32px; padding: 0 12px; border: 0; cursor: pointer; font: 700 13px/1 var(--m-font); color: var(--m-fg-muted); background: var(--m-surface); --px-n: 4px; clip-path: var(--px-4); transition: background-color var(--m-t-fast), color var(--m-t-fast); }
+.sk-chip:hover { color: var(--m-fg); background: var(--m-surface-2); }
+:root .sk-chip.on { color: var(--px-on-accent, #06200e); background: var(--m-accent); }
+/* Кнопка карточки — тихая, пока курсор не на карточке: без стены зелёных кнопок */
+:root .card.mr-skin:not(:hover) .btn.primary { color: var(--m-accent); background: var(--m-surface-2); --px-img: none; --px-ft: transparent; --px-fb: transparent; }
+.card.mr-skin .mr-skin-art > img { transition: transform 260ms var(--m-ease-out, ease); }
+.card.mr-skin:hover .mr-skin-art > img { transform: translateY(-4px) scale(1.04); }
+.card.mr-skin.cat-skel { cursor: default; }
+
+.sk-grid { display: grid; grid-template-columns: minmax(260px, 420px) minmax(0, 1fr); gap: 22px; align-items: start; margin-bottom: 26px; }
+@media (max-width: 860px) { .sk-grid { grid-template-columns: minmax(0, 1fr); } }
+.card.sk-stage {
+  position: relative; aspect-ratio: 4 / 5; padding: 0; overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 20%, color-mix(in srgb, var(--m-accent) 14%, var(--m-surface-2)) 0%, var(--m-surface-2) 55%, color-mix(in srgb, var(--m-surface-2) 70%, #000) 100%);
+}
+.sk-flat { position: absolute; inset: 8%; width: 84%; height: 84%; object-fit: contain; image-rendering: pixelated; transition: opacity 200ms; }
+.sk-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; opacity: 0; transition: opacity 260ms; }
+.sk-canvas:active { cursor: grabbing; }
+.sk-stage.is-3d .sk-canvas { opacity: 1; }
+.sk-stage.is-3d .sk-flat { opacity: 0; }
+.sk-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font: 600 12px/1 var(--m-font); color: var(--m-fg-muted); background: rgba(0, 0, 0, 0.45); white-space: nowrap; pointer-events: none; }
+.sk-hint svg { width: 12px; height: 12px; }
+.sk-side { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; min-width: 0; }
+.sk-title { margin: 0; }
+.sk-facts { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; color: var(--m-fg-muted); }
+.sk-fact { display: inline-flex; align-items: center; gap: 6px; }
+.sk-fact b { color: var(--m-fg); font-variant-numeric: tabular-nums; }
+.sk-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-tag { height: 30px; padding: 0 11px; border: 0; cursor: pointer; font: 700 13px/1 var(--m-font); color: var(--m-fg); background: var(--m-surface-2); --px-n: 4px; clip-path: var(--px-4); }
+.sk-tag:hover { color: var(--px-on-accent, #06200e); background: var(--m-accent); }
+.sk-tag.skel-text { display: inline-block; height: 30px; cursor: default; }
+.sk-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; }
+.sk-note { margin: 0; font-size: 13px; line-height: 18px; color: var(--m-fg-subtle); max-width: 520px; }
+.sk-h2 { margin: 0 0 10px; font: 800 17px/1.2 var(--m-font); color: var(--m-fg); }
+.sk-servers { margin-top: 4px; }
+.sk-srv-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-srv { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: var(--m-surface); --px-n: 4px; clip-path: var(--px-4); }
+.sk-srv b { font-size: 13px; color: var(--m-fg); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-srv small { font-size: 12px; font-weight: 700; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.sk-related .mr-skingrid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }

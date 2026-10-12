@@ -1,0 +1,123 @@
+/* Экран игры Minecraft (29.09.2026). Рамки кнопок и плит — из кита
+   (.card, .btn, .mod-row, .tgl в 12-pixel.css); здесь раскладка и арт.
+   Арт — сам рисунок, без затемнений-градиентов: текст стоит на сплошной
+   плите под ним, постер «ломает рамку» вверх (docs/DESIGN-JUICE.md). */
+#s-game { display: flex; flex-direction: column; gap: 18px; }
+
+.gm-top { position: relative; }
+.gm-hero {
+  position: relative;
+  height: 340px;
+  background: var(--m-inset);
+  overflow: hidden;
+  --px-n: 10px; clip-path: var(--px-10);
+}
+.gm-hero > img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; display: block; }
+/* У Education нет баннера без логотипа: логотип внизу арта — берём верх, героев. */
+.gm-education .gm-hero > img { object-position: 50% 12%; }
+
+/* Постер «ломает рамку»: наполовину на арте, наполовину на плите. */
+.gm-poster {
+  position: absolute;
+  left: 24px;
+  top: 190px;
+  z-index: 2;
+  width: 180px;
+  height: 270px;
+  object-fit: cover;
+  background: var(--m-inset);
+  --px-n: 10px; clip-path: var(--px-10);
+}
+.gm-panel {
+  display: flex;
+  min-height: 150px;
+  margin-top: 10px;
+  padding: 20px 24px 22px 232px;
+  --px-n: 10px; clip-path: var(--px-10);
+}
+.gm-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.gm-main h1 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 32px; font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+.gm-tag { font-size: 15px; color: var(--m-fg-muted); }
+.gm-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--m-accent-fg, #06200e);
+  background: var(--m-accent);
+  clip-path: var(--px-4);
+}
+.gm-facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.gm-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--m-fg);
+  background: var(--m-surface-2);
+  clip-path: var(--px-4);
+  font-variant-numeric: tabular-nums;
+}
+.gm-owned { color: var(--m-accent-fg, #06200e); background: var(--m-accent); }
+.gm-lic {
+  flex-basis: 100%;
+  padding: 0;
+  text-align: left;
+  font-size: 13px;
+  color: var(--m-fg-subtle);
+  background: none;
+  cursor: pointer;
+}
+.gm-lic:hover { color: var(--m-accent); }
+.gm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.gm-play { min-width: 180px; justify-content: center; }
+
+.gm-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.gm-bar { width: 280px; height: 14px; background: var(--m-inset); clip-path: var(--px-4); }
+.gm-bar > span { display: block; height: 100%; background: var(--m-accent); transition: width 240ms linear; }
+
+.gm-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 34px; margin-top: 6px; }
+.gm-head h2 { font-size: 22px; font-weight: 700; }
+.gm-mods { display: flex; flex-direction: column; gap: 8px; }
+.gm-mod { --px-n: 10px; clip-path: var(--px-10); }
+.gm-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 32px 16px; color: var(--m-fg-subtle);
+  --px-n: 10px; clip-path: var(--px-10);
+}
+.gm-empty b { color: var(--m-fg); font-size: 15px; }
+
+/* Логотип сервера без баннера — по центру, не растянут. */
+.gm-bd-logo > img { object-fit: contain; padding: 18%; }
+.gm-bd-play {
+  position: absolute; right: 10px; bottom: 10px;
+  display: grid; place-items: center; width: 34px; height: 34px;
+  color: var(--m-accent-fg, #06200e); background: var(--m-accent);
+  clip-path: var(--px-5);
+  opacity: 0; transition: opacity 120ms var(--m-ease-smooth);
+}
+.ph-card:hover .gm-bd-play, .ph-card:focus-visible .gm-bd-play { opacity: 1; }
+
+/* Карточки «Других игр» — те же .ph-card, что у сборок; здесь только плашка. */
+.gm-new-card { position: absolute; left: 10px; bottom: 10px; z-index: 1; }
+
+/* Store не сообщает ход установки: полоса «ходит» ступенями, пока ждём. */
+.gm-bar-wait { animation: gm-wait 1.2s var(--m-ease-smooth) infinite; }
+@keyframes gm-wait { from { margin-left: 0; } to { margin-left: 92%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .gm-bar-wait { animation: none; }
+}
+
+@media (max-width: 720px) {
+  .gm-hero { height: 200px; }
+  .gm-poster { left: 16px; top: 110px; width: 110px; height: 165px; }
+  .gm-panel { padding: 94px 16px 18px; }
+  .gm-main h1 { font-size: 26px; }
+  .gm-bar { width: 100%; }
+}

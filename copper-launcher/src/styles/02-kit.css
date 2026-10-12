@@ -1,0 +1,1099 @@
+/* ============ Design tokens ============ */
+:root{
+  --m-bg:#161718; --m-surface:#1E1F20; --m-surface-2:#26272A; --m-raised:#2A2B2E; --m-inset:#131314;
+  --m-border:rgba(255,255,255,.07); --m-border-strong:rgba(255,255,255,.14);
+  --m-fg:#EDEFEE; --m-fg-muted:rgba(237,239,238,.80); --m-fg-subtle:rgba(237,239,238,.66); --m-fg-faint:rgba(237,239,238,.52);
+  --m-accent:#5EC64D; --m-accent-hover:#70D55F; --m-accent-fg:#FFFFFF;
+  --m-grad:linear-gradient(45deg,#11998E 0%,#5EC64D 100%);
+  --m-accent-rgb:94,198,77;
+  --m-accent-soft:rgba(var(--m-accent-rgb),.13); --m-accent-glow:0 6px 16px rgba(var(--m-accent-rgb),.20);
+  --m-danger:#FF6B5E; --m-danger-soft:rgba(255,107,94,.13);
+  --m-warning:#F5AA38; --m-warning-soft:rgba(245,170,56,.14);
+  --m-info:#6AA9E9; --m-info-soft:rgba(106,169,233,.14);
+  --m-tick-read:#4C9FFE;
+  --m-success:#5EC64D; --m-success-soft:rgba(94,198,77,.13);
+  /* Рубин — три грани огранки: блик, тело, тень. */
+  --m-ruby-hi:hsl(347 84% 69%); --m-ruby:hsl(347 76% 50%); --m-ruby-lo:hsl(347 80% 33%);
+  --m-rarity-common:hsl(200 6% 62%); --m-rarity-uncommon:hsl(110 52% 52%);
+  --m-rarity-rare:hsl(212 78% 60%); --m-rarity-epic:hsl(280 62% 63%);
+  --m-rarity-legendary:hsl(42 88% 58%);
+  --m-r-mini:8px; --m-r-ctl:12px; --m-r-md:16px; --m-r-card:14px; --m-r-pill:999px;
+  --m-shadow-md:0 8px 24px -8px rgba(0,0,0,.28); --m-shadow-lg:0 20px 48px -16px rgba(0,0,0,.45);
+  --m-t-fast:120ms; --m-t-base:200ms; --m-t-slow:300ms;
+  --m-side-t:320ms;
+  --m-ease-out:cubic-bezier(.16,1,.3,1); --m-ease-move:cubic-bezier(.32,.72,0,1);
+  /* Плавная кривая вместо пиксельных steps() (07.10.2026: переходы «как будто лагает»). */
+  --m-ease-smooth:cubic-bezier(.22,1,.36,1);
+  --m-font:'Geist',system-ui,-apple-system,sans-serif;
+  --m-font-brand:'Unbounded','Geist',sans-serif;
+  --m-mono:ui-monospace,'SF Mono',Menlo,monospace;
+  color-scheme:dark;
+}
+/* The accent lives in CSS variables, and a variable swap repaints with no
+   transition of its own. The class is switched on only while the palette
+   changes, so the blanket rule never costs anything during normal use. */
+:root.color-fade,
+:root.color-fade *,
+:root.color-fade *::before,
+:root.color-fade *::after{
+  transition:background-color 300ms ease,border-color 300ms ease,color 300ms ease,
+    fill 300ms ease,stroke 300ms ease,box-shadow 300ms ease,outline-color 300ms ease !important;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--m-font);font-size:14px;line-height:1.5;font-weight:500;
+  background:var(--m-bg);color:var(--m-fg);
+  font-synthesis-weight:none;-webkit-font-smoothing:antialiased;
+  min-height:100vh;transition:background-color 150ms ease,color 150ms ease;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select{font:inherit;color:inherit}
+svg{flex-shrink:0}
+svg.icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav-item svg.icon{width:17px;height:17px}
+.btn.lg svg.icon{width:18px;height:18px}
+.tb-btn svg.icon{width:14px;height:14px}
+.mini-play svg.icon{width:16px;height:16px}
+.dl-top svg.icon{width:13px;height:13px;color:var(--m-accent)}
+.trust svg.icon{width:15px;height:15px;color:var(--m-accent);margin-top:1px}
+.acc-gear svg.icon{width:17px;height:17px}
+.input svg.icon{width:16px;height:16px;color:var(--m-fg-subtle)}
+.seg svg.icon{width:14px;height:14px}
+.wp-btn svg.icon{width:14px;height:14px}
+.ip-pill svg.icon{width:14px;height:14px;color:var(--m-fg-subtle)}
+.toast svg.icon{width:17px;height:17px;color:var(--m-success)}
+.cover-ph svg.icon{width:34px;height:34px}
+.mod-icon svg.icon{width:22px;height:22px}
+.build-new svg.icon{width:18px;height:18px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--m-border-strong);border-radius:var(--m-r-pill);border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+/* No native OS widgets: strip number input spinners */
+input[type="number"]{-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* ============ Prototype controls ============ */
+.proto-bar{max-width:1240px;margin:20px auto 14px;padding:0 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.proto-title{font-size:13px;color:var(--m-fg-subtle);margin-right:auto}
+.proto-title b{color:var(--m-fg);font-weight:650}
+.proto-btn{height:32px;padding:0 14px;border-radius:var(--m-r-pill);font-size:13px;font-weight:600;color:var(--m-fg-muted);background:var(--m-surface);transition:all var(--m-t-fast)}
+.proto-btn:hover{color:var(--m-fg);background:var(--m-surface-2)}
+.proto-btn.on{background:var(--m-accent-soft);color:var(--m-accent)}
+
+/* ============ Launcher window ============ */
+.window{
+  width:100vw;height:100vh;
+  background:var(--m-bg);
+  display:flex;flex-direction:column;position:relative;
+  /* The closed chat panel parks itself past the right edge (translateX), which
+     widens the scrollable area of this box. With `hidden` the box stays a
+     scroll container without a visible bar: one sideways trackpad swipe, a
+     Shift+wheel or a scroll-into-view carried the whole launcher left by the
+     width of the panel — titlebar, rail and rows off-screen — and nothing could
+     bring it back. `clip` keeps the same painting and takes the scrolling away. */
+  overflow:clip;
+}
+/* Titlebar (frameless, drag region) */
+/* The window has no native frame: minimise, maximise and close exist only
+   here. Every full-screen layer (boot splash, boot update, modal backdrop,
+   onboarding, tour, lightbox) is painted over this strip and swallowed the
+   clicks — on a first run the launcher could not be minimised or closed at
+   all until it was restarted. The strip stays above all of them. */
+.titlebar{height:44px;display:flex;align-items:center;gap:10px;padding:0 8px 0 16px;flex-shrink:0;user-select:none;position:relative;z-index:10100;pointer-events:none}
+.titlebar>*{pointer-events:auto}
+.tb-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:9px;pointer-events:none}
+.tb-logo{display:flex;align-items:center;gap:9px}
+.tb-mark{width:22px;height:22px;border-radius:8px;background:var(--m-grad);display:grid;place-items:center;color:var(--m-accent-fg)}
+.tb-name{font-family:var(--m-font-brand);font-weight:700;font-size:12.5px;letter-spacing:.03em}
+.tb-name span{color:inherit;font-family:var(--m-font-brand);font-weight:700;font-size:12.5px;margin-left:7px;letter-spacing:.01em}
+.tb-drag{flex:1;height:100%}
+.tb-btn{position:relative;width:40px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--m-fg-subtle);transition:all var(--m-t-fast)}
+/* Fitts's law: the window buttons stay visually inset, but their hit area reaches
+   the window edges so a throw of the cursor into the corner still hits Close. */
+.tb-btn::before{content:'';position:absolute;top:-6px;bottom:0;left:-1px;right:-1px}
+.tb-btns .tb-btn:last-child::before{right:-8px}
+.tb-btn:hover{background:var(--m-surface-2);color:var(--m-fg)}
+.tb-btn.close:hover{background:var(--m-danger-soft);color:var(--m-danger)}
+.tb-btns{display:flex;align-items:center;gap:2px}
+/* macOS puts native traffic lights on the left; reserve room so the drag region
+   does not start under them. */
+.titlebar.mac{padding:0 16px 0 78px}
+
+.app{flex:1;display:flex;min-height:0;padding:0 12px 12px;gap:12px}
+
+/* ============ Sidebar ============ */
+/* Every part of the rail moves on one duration and one curve: when the width,
+   the paddings and the labels each had their own timing, the items appeared to
+   stutter against the edge that was still travelling. */
+.sidebar{width:236px;flex-shrink:0;background:var(--m-surface);border-radius:var(--m-r-card);padding:10px;display:flex;flex-direction:column;gap:2px;will-change:width;transition:width var(--m-side-t) var(--m-ease-move)}
+/* The active tint fades in: switching sections should read as a move, not a
+   flash. Colour is quicker than the background so the label leads. */
+.nav-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--m-fg-subtle);width:100%;text-align:left;position:relative;
+  transition:background-color 280ms var(--m-ease-move),color 180ms ease,padding var(--m-side-t) var(--m-ease-move),gap var(--m-side-t) var(--m-ease-move)}
+.nav-item:hover{background:rgba(255,255,255,.04);color:var(--m-fg)}
+.nav-item.active{background:var(--m-accent-soft);color:var(--m-accent)}
+.nav-group{display:flex;flex-direction:column;gap:2px;width:100%}
+/* One tooltip for every `data-tip` on the collapsed rail — nav items, the
+   collapse button, the account chip. It is always present and only faded:
+   animating in from display:none is impossible, so it would snap. */
+.sidebar.collapsed [data-tip]::after{
+  content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;
+  transform:translate(-8px,-50%) scale(.96);transform-origin:left center;
+  background:var(--m-surface-2);color:var(--m-fg);border:1px solid var(--m-border);
+  padding:6px 10px;border-radius:8px;box-shadow:var(--m-shadow-lg);
+  font-size:12.5px;font-weight:600;white-space:nowrap;
+  z-index:80;pointer-events:none;
+  opacity:0;visibility:hidden;
+  transition:opacity .17s var(--m-ease-move,ease),transform .22s var(--m-ease-move,ease),visibility 0s linear .22s}
+.sidebar.collapsed [data-tip]:hover::after{
+  opacity:1;visibility:visible;transform:translate(0,-50%) scale(1);
+  transition:opacity .17s var(--m-ease-move,ease),transform .22s var(--m-ease-move,ease),visibility 0s}
+.nav-item svg{width:17px;height:17px;flex:none}
+/* Sidebar collapse button */
+.side-collapse{display:flex;align-items:center;gap:9px;padding:5px 8px 5px 6px;margin-bottom:6px;border-radius:10px;color:var(--m-fg-faint);font-size:12px;font-weight:600;width:100%;text-align:left;transition:all var(--m-t-fast)}
+.side-collapse:hover{color:var(--m-fg)}
+.side-collapse-ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--m-inset);color:var(--m-fg-subtle);flex:none;transition:width var(--m-side-t) var(--m-ease-move),height var(--m-side-t) var(--m-ease-move),background var(--m-t-fast),color var(--m-t-fast)}
+.side-collapse:hover .side-collapse-ic{background:var(--m-accent-soft);color:var(--m-accent)}
+.side-collapse svg{width:15px;height:15px;flex:none}
+.sidebar.collapsed .side-collapse{margin-bottom:6px;padding:0}
+.sidebar.collapsed .side-collapse .side-collapse-ic{width:46px;height:34px}
+.sidebar.collapsed{width:66px}
+/* The label shrinks its own box in step with the rail instead of switching
+   width between 0 and auto: a width that jumps makes the text pop out past the
+   panel edge before the panel has grown to hold it. */
+.nav-label,.acc-meta,.quick-meta{max-width:170px;overflow:hidden;transition:opacity .18s var(--m-ease-move) 60ms,max-width var(--m-side-t) var(--m-ease-move)}
+/* Wrapping is what made the icons dip: at the narrow end of the animation a
+   two-word label broke onto a second line and grew the row for a few frames. */
+.nav-label{white-space:nowrap}
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .acc-meta,
+.sidebar.collapsed .quick-meta{opacity:0;max-width:0;min-width:0;flex:0 0 0;padding:0;white-space:nowrap;pointer-events:none;transition:opacity .12s var(--m-ease-move),max-width var(--m-side-t) var(--m-ease-move)}
+.sidebar.collapsed .side-cap,
+.sidebar.collapsed .dl-card{display:none}
+/* Trailing controls fade and give up their width on the same curve as the rail;
+   dropping them with display:none re-flowed the row a frame before the move. */
+.sidebar.collapsed .quick-play,
+.sidebar.collapsed .acc-chevron{opacity:0;max-width:0;min-width:0;padding:0;overflow:hidden;pointer-events:none}
+/* Icons stay left-aligned and only their padding changes: centring them inside a
+   box that is still 216px wide teleported the avatar to the middle of the rail
+   before it had shrunk, which read as the picture blinking out. The end padding
+   is what centres each icon once the rail reaches 46px. */
+.sidebar.collapsed .nav-item,
+.sidebar.collapsed .side-collapse,
+.sidebar.collapsed .account,
+.sidebar.collapsed .quick-open{gap:0;width:100%;padding-right:0}
+.side-collapse{transition:gap var(--m-side-t) var(--m-ease-move),padding var(--m-side-t) var(--m-ease-move),color var(--m-t-fast)}
+.sidebar.collapsed .nav-item{padding-left:14px}
+.sidebar.collapsed .account{padding-left:5px}
+.sidebar.collapsed .quick-open{padding-left:8px}
+.sidebar.collapsed .quick-row{justify-content:center;padding:3px}
+.sidebar.collapsed .quick-open{flex:none}
+.sidebar.collapsed .account{margin:0 auto}
+.sidebar.collapsed .nav-count{position:absolute;top:1px;right:1px;margin:0;min-width:16px;height:16px;padding:0 4px;font-size:10px}
+.sidebar.collapsed [data-tip]{position:relative}
+.side-sep{height:1px;background:var(--m-border);margin:8px 4px;flex-shrink:0}
+.side-spacer{flex:1}
+.nav-group-bottom{margin-top:4px;margin-bottom:8px}
+.side-cap{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--m-fg-faint);padding:2px 12px 6px}
+.nav-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:var(--m-r-pill);background:var(--m-accent-soft);color:var(--m-accent);font-size:11.5px;font-weight:700;display:grid;place-items:center}
+.nav-badge{min-width:20px;height:20px;margin-left:6px;padding:0 6px;border-radius:var(--m-r-pill);background:var(--m-danger);color:var(--m-accent-fg);font-size:11px;font-weight:700;display:grid;place-items:center}
+.sidebar.collapsed .nav-badge{position:absolute;top:1px;left:1px;margin:0;min-width:16px;height:16px;padding:0 4px;font-size:10px}
+/* Free tier is the reason people open hosting at all, so the rail says it out
+   loud. Solid accent instead of the soft tint used by counters: this is a
+   promotion, not a number, and it must not read as unread mail. */
+.nav-pill{margin-left:auto;height:18px;padding:0 7px;border-radius:var(--m-r-pill);background:var(--m-accent);color:var(--m-accent-fg);font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;display:grid;place-items:center;white-space:nowrap;flex:none;
+  box-shadow:0 0 0 0 var(--m-accent-soft);animation:nav-pill-breathe 3.6s var(--m-ease-move,ease) infinite}
+.nav-item.active .nav-pill{animation:none;box-shadow:none}
+/* Second act of the hint: the badge stops asking for attention but still
+   marks the section, so a returning player is not sold the same thing twice. */
+.nav-pill.quiet{background:var(--m-accent-soft);color:var(--m-accent);font-weight:700;animation:none;box-shadow:none}
+@keyframes nav-pill-breathe{0%,72%,100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}84%{box-shadow:0 0 0 4px var(--m-accent-soft)}}
+@media (prefers-reduced-motion:reduce){.nav-pill{animation:none}}
+/* Collapsed the words do not fit, but the signal must survive: the pill becomes
+   a dot on the icon, in the same corner the tooltip explains. */
+.sidebar.collapsed .nav-pill{position:absolute;top:5px;right:11px;margin:0;height:8px;width:8px;min-width:0;padding:0;font-size:0;letter-spacing:0;overflow:hidden;box-shadow:0 0 0 2px var(--m-surface)}
+.sidebar.collapsed .nav-pill.quiet{background:var(--m-accent);opacity:.5}
+.quick-row{display:flex;align-items:center;gap:4px;width:100%;padding:3px 8px 3px 12px;border-radius:10px;color:var(--m-fg-muted);transition:padding var(--m-side-t) var(--m-ease-move),background var(--m-t-fast),color var(--m-t-fast)}
+.quick-row:hover{background:rgba(255,255,255,.04);color:var(--m-fg)}
+.quick-open{display:flex;align-items:center;gap:10px;flex:1;min-width:0;padding:5px 0;color:inherit;text-align:left;transition:padding var(--m-side-t) var(--m-ease-move),gap var(--m-side-t) var(--m-ease-move)}
+.quick-open img{width:30px;height:30px;border-radius:8px;object-fit:cover;flex-shrink:0}
+.quick-open>svg{width:20px;height:20px;flex-shrink:0;color:var(--m-fg-faint)}
+.quick-meta{min-width:0;max-width:170px;overflow:hidden;display:flex;flex-direction:column;gap:1px;transition:opacity .18s var(--m-ease-move) 60ms,max-width var(--m-side-t) var(--m-ease-move)}
+.quick-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quick-ver{font-size:11px;color:var(--m-fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quick-play{width:28px;height:28px;max-width:28px;flex:none;display:grid;place-items:center;border-radius:8px;color:var(--m-fg-faint);transition:background var(--m-t-fast),color var(--m-t-fast),opacity .14s var(--m-ease-move),max-width var(--m-side-t) var(--m-ease-move)}
+.quick-play svg{width:14px;height:14px}
+.quick-row:hover .quick-play{color:var(--m-accent);background:var(--m-accent-soft)}
+/* Friends */
+.fr-row{display:flex;align-items:center;gap:14px;padding:13px 16px;background:var(--m-surface);border-radius:var(--m-r-card)}
+.fr-row img{width:40px;height:40px;border-radius:8px;image-rendering:pixelated;flex:none}
+.fr-body{flex:1;min-width:0}
+.fr-nick{font-size:14.5px;font-weight:650;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr-row>.btn,.fr-row .fr-more-wrap{flex:none}
+.fr-status{font-size:12.5px;color:var(--m-fg-subtle);margin-top:2px;display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fr-status.on{color:var(--m-fg-muted)}
+/* На сайте — это не лаунчер: точка приглушена, чтобы «в сети» не читалось как
+   «сидит в лаунчере и сейчас ответит». */
+.fr-status.on.web .dot{background:var(--m-fg-faint)}
+/* Dim the row contents only: opacity on the row would also fade its popup menu. */
+.fr-row.off>img{opacity:.55}
+.fr-row.off .fr-nick{color:var(--m-fg-muted)}
+.fr-row.off .fr-status{color:var(--m-fg-faint)}
+/* Chat panel */
+.chat{position:absolute;top:44px;right:0;bottom:0;width:330px;background:var(--m-raised);box-shadow:var(--m-shadow-lg);z-index:300;display:flex;flex-direction:column;transform:translateX(105%);transition:transform var(--m-t-slow) var(--m-ease-move);border-radius:14px 0 0 0}
+.chat.open{transform:none}
+.chat-grip{position:absolute;left:-3px;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:10;touch-action:none}
+/* The highlight is an inset shadow on the panel, not a bar on the grip: only a
+   shadow is clipped by the panel's own corner radius and hugs the rounded top. */
+.chat:has(.chat-grip:hover),.chat:has(.chat-grip:active){box-shadow:var(--m-shadow-lg),inset 2px 0 0 var(--m-accent)}
+.chat-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--m-border)}
+.chat-head img{width:32px;height:32px;border-radius:8px;image-rendering:pixelated}
+.chat-head b{flex:1;font-size:14px}
+.chat-body{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.msg-row{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.msg-row.me{align-items:flex-end}
+.msg{max-width:82%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.45;background:var(--m-surface-2);align-self:flex-start;display:flex;flex-direction:column;gap:5px}
+.msg.me{background:var(--m-accent-soft);color:var(--m-fg);align-self:flex-end}
+.msg time{display:block;font-size:10.5px;color:var(--m-fg-faint);margin-top:3px}
+.msg-text{white-space:pre-wrap;word-break:break-word}
+.msg.grouped{border-top-left-radius:5px}
+.msg.me.grouped{border-top-left-radius:12px;border-top-right-radius:5px}
+.msg.sending{opacity:.62}
+.msg.failed{background:var(--m-danger-soft,rgba(220,70,70,.16))}
+/* Attachment-only bubble: the player needs room the text bubble does not. */
+.msg.bare{padding:6px 8px;max-width:92%;min-width:210px}
+.msg-meta{display:flex;align-items:center;gap:4px;align-self:flex-end;font-size:10.5px;line-height:1;color:var(--m-fg-faint)}
+/* A rotated CSS box does not agree with its own bounding box, so the tick sat
+   off the baseline next to the time. A glyph from the sprite lines up on its own. */
+/* Как в мессенджерах: доставлено — одна серая галка, прочитано — две синие.
+   Полупрозрачность съедала тонкий штрих на 14 пикселях, поэтому оттенок задан
+   цветом, а не opacity. */
+/* Двойная шире одиночной ровно на своё второе плечо — иначе бокс сжал бы её.
+   Цвет доставленной галки берётся от строки со временем, а не из отдельного
+   токена: тема из каталога может переопределить любой токен, и галка уезжала в
+   чёрное на тёмном пузыре. Время в этой же строке видно всегда — значит видно и
+   галку. У прочитанной синий свой, с запасным значением на случай темы, которая
+   про него не знает. */
+/* Селектор с типом: `svg.icon` задаёт общий размер иконок и по специфичности
+   бьёт голый класс — размеры галок молча игнорировались, и они рисовались
+   вписанными в квадрат 16×16 с полями. */
+svg.msg-tick{width:18px;height:9px;flex:none;color:inherit;opacity:1}
+svg.msg-tick.pending{width:12px;opacity:.5}
+svg.msg-tick.read{color:var(--m-tick-read,#4C9FFE);opacity:1}
+/* Message actions: reply, edit, delete, reactions */
+.msg.gone{opacity:.7}
+.msg-gone{font-style:italic;color:var(--m-fg-faint)}
+.msg-reply{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:4px 8px;border:0;border-left:2px solid var(--m-accent);border-radius:0 7px 7px 0;background:rgba(127,127,127,.12);font-family:inherit;font-size:12px;line-height:1.35;text-align:left;color:inherit;cursor:pointer;transition:background var(--m-t-fast)}
+.msg-reply:hover{background:rgba(127,127,127,.24)}
+.msg-reply b{font-size:11px;font-weight:700;color:var(--m-accent)}
+.msg-reply span{color:var(--m-fg-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* Подсветка цели перехода: обводка гаснет сама, поэтому состояние снимается по
+   таймеру и не остаётся висеть, если человек тут же ушёл дальше. */
+.msg.flash{animation:msg-flash 1.4s var(--m-ease-move)}
+@keyframes msg-flash{0%,55%{box-shadow:0 0 0 2px var(--m-accent)}100%{box-shadow:0 0 0 2px transparent}}
+/* Кнопка действий стоит вплотную к пузырю, а не у края панели: строка тянется
+   на всю ширину, и прижатая к её краю кнопка оказывалась на другой стороне
+   чата, за метры от своего сообщения. */
+.msg-line{display:flex;width:100%;align-items:center;gap:5px;min-width:0}
+/* В строке align-self правит уже вертикаль, а сторону задаёт направление. */
+.msg-line>.msg{align-self:auto}
+.msg-row.me .msg-line{flex-direction:row-reverse}
+.msg-act{width:22px;height:22px;flex:none;display:grid;place-items:center;padding:0;border:0;border-radius:7px;background:none;color:var(--m-fg-faint);cursor:pointer;opacity:0;transition:opacity var(--m-t-fast),color var(--m-t-fast)}
+.msg-row:hover .msg-act{opacity:1}
+.msg-act:hover{color:var(--m-accent)}
+.msg-act svg{width:14px;height:14px}
+.msg-reactions{display:flex;flex-wrap:wrap;gap:4px;max-width:82%}
+.msg-reaction{display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:var(--m-r-pill);border:1px solid var(--m-border);background:var(--m-surface-2);color:var(--m-fg-subtle);font-size:11.5px;line-height:1.5;cursor:pointer;font-variant-numeric:tabular-nums}
+.msg-reaction:hover{border-color:var(--m-border-strong)}
+.msg-reaction.on{border-color:var(--m-accent);background:var(--m-accent-soft);color:var(--m-fg)}
+/* Контекстное меню карточки сборки — та же панель, что у меню сообщения:
+   один вид и одни отступы у всего, что открывается по правой кнопке. */
+.ctx-menu{position:fixed;z-index:400;width:224px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:13px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg)}
+.ctx-menu .msg-menu-item.ctx-sep{margin-top:5px;padding-top:9px;border-top:1px solid var(--m-border);border-radius:9px}
+.msg-menu{position:fixed;z-index:400;width:210px;display:flex;flex-direction:column;gap:1px;padding:6px;border-radius:13px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg)}
+.msg-menu-react{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid var(--m-border)}
+.msg-menu-emoji{display:grid;place-items:center;height:26px;border:0;background:none;border-radius:7px;font-size:15px;cursor:pointer;transition:background var(--m-t-fast)}
+.msg-menu-emoji:hover{background:var(--m-surface)}
+.msg-menu-emoji.on{background:var(--m-accent-soft)}
+.msg-menu-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border:0;background:none;border-radius:9px;color:var(--m-fg);font-size:13px;text-align:left;cursor:pointer;transition:background var(--m-t-fast)}
+.msg-menu-item:hover{background:var(--m-surface)}
+.msg-menu-item.danger{color:#e5848a}
+.msg-menu-item svg{width:15px;height:15px;flex:none}
+/* Reply/edit bar above the composer */
+.chat-quote{display:flex;align-items:center;gap:9px;padding:8px 12px;border-top:1px solid var(--m-border);color:var(--m-fg-subtle)}
+.chat-quote>svg{width:16px;height:16px;flex:none;color:var(--m-accent)}
+.chat-quote-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.chat-quote-body b{font-size:11.5px;font-weight:700;color:var(--m-accent)}
+.chat-quote-body span{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-quote-x{width:26px;height:26px;flex:none;display:grid;place-items:center;border:0;border-radius:8px;background:none;color:var(--m-fg-faint);cursor:pointer}
+.chat-quote-x:hover{color:var(--m-fg)}
+.chat-quote-x svg{width:14px;height:14px}
+.chat-quote+.chat-input{border-top:0}
+.msg-img{max-width:100%;border-radius:9px;display:block;cursor:zoom-in}
+.msg-fail{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--m-fg-muted)}
+.msg-fail button{background:none;border:0;padding:0;color:var(--m-accent);font-size:11.5px;font-weight:650;cursor:pointer}
+.chat-day{align-self:center;font-size:11px;font-weight:650;color:var(--m-fg-faint);padding:6px 10px;border-radius:var(--m-r-pill);background:var(--m-surface-2)}
+.chat-typing{align-self:flex-start;font-size:12px;color:var(--m-fg-subtle);font-style:italic}
+.chat-down{position:absolute;right:16px;bottom:74px;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);color:var(--m-fg-muted);cursor:pointer;z-index:5}
+.chat-down:hover{color:var(--m-accent)}
+.chat-down svg{width:16px;height:16px}
+/* Voice message */
+/* The bubble is at most 82% of a 330px panel, so every part of the player has
+   to be able to shrink — a rigid strip pushed the duration outside it. */
+.voice{display:flex;align-items:center;gap:8px;min-width:0;width:100%}
+.voice-play{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--m-accent);color:var(--m-accent-fg,#fff);cursor:pointer;border:0;padding:0;line-height:0}
+/* A triangle is heavier on its left, so a geometrically centred one reads as
+   shifted; the nudge puts its visual mass in the middle. */
+.voice-play svg{width:13px;height:13px}
+.voice-play.is-play svg{margin-left:2px}
+.voice-wave{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:2px;height:26px;cursor:pointer;overflow:hidden}
+.voice-wave i{flex:1 1 0;min-width:1px;border-radius:2px;background:var(--m-fg-faint);opacity:.5}
+.voice-wave i.on{background:var(--m-accent);opacity:1}
+.voice-time.bad{color:#e5848a}
+.voice-time{font-size:11px;white-space:nowrap;color:var(--m-fg-subtle);font-variant-numeric:tabular-nums;flex:none}
+/* Recording bar replaces the composer while the mic is live */
+.chat-rec{gap:10px}
+.chat-rec-x{width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:11px;background:var(--m-surface-2);border:1px solid var(--m-border);color:var(--m-fg-muted);cursor:pointer}
+.chat-rec-x svg{width:15px;height:15px}
+.chat-rec-dot{width:9px;height:9px;border-radius:50%;background:#e5484d;flex:none;animation:recPulse 1.1s ease-in-out infinite}
+@keyframes recPulse{0%,100%{opacity:1}50%{opacity:.35}}
+.chat-rec-wave{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:2px;height:24px;overflow:hidden}
+.chat-rec-wave i{width:3px;flex:none;border-radius:2px;background:var(--m-accent);opacity:.85;transition:height .07s linear}
+.chat-rec-left{font-size:11px;color:#e5a04d;flex:none;font-variant-numeric:tabular-nums}
+.chat-rec-time{font-size:12.5px;font-weight:650;font-variant-numeric:tabular-nums}
+
+/* In-chat server invite widget */
+.msg-invite{max-width:88%;align-self:flex-start;display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;background:var(--m-surface-2);border:1px solid var(--m-border)}
+.msg-invite.me{align-self:flex-end;background:var(--m-accent-soft);border-color:transparent}
+.msg-invite-ic{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:var(--m-accent-soft);color:var(--m-accent)}
+.msg-invite.me .msg-invite-ic{background:var(--m-surface-2)}
+.msg-invite-ic svg{width:17px;height:17px}
+.msg-invite-body{display:flex;flex-direction:column;gap:1px}
+.msg-invite-body b{font-size:12px;font-weight:700;color:var(--m-fg-subtle)}
+.msg-invite-name{font-size:14px;font-weight:650}
+.msg-invite-addr{font-size:12px;color:var(--m-fg-subtle);font-variant-numeric:tabular-nums}
+.msg-invite .btn{width:100%}
+.chat-input{position:relative;display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid var(--m-border)}
+/* The row gained an attach button, and a flex item defaults to min-width:auto:
+   without this the field refuses to shrink and pushes send off the panel. */
+.chat-input>.input{flex:1 1 0;min-width:0;height:36px;padding:0 12px}
+.chat-emoji-btn{width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:11px;background:var(--m-surface-2);color:var(--m-fg-subtle);border:1px solid var(--m-border);cursor:pointer;transition:color var(--m-t-fast),background var(--m-t-fast)}
+.chat-emoji-btn:hover{color:var(--m-accent);background:var(--m-surface)}
+.chat-emoji-btn svg{width:18px;height:18px}
+.chat-emoji-pop{position:absolute;left:12px;bottom:calc(100% + 6px);width:280px;display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:10px;border-radius:14px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);z-index:20}
+.chat-emoji{display:grid;place-items:center;height:30px;border:0;background:none;border-radius:8px;font-size:17px;cursor:pointer;transition:background var(--m-t-fast)}
+.chat-emoji:hover{background:var(--m-surface)}
+/* Send button: square icon button, matches the 36px emoji button beside it */
+.chat-send{width:36px;height:36px;flex:none;display:grid;place-items:center;border-radius:11px;background:var(--m-grad);color:var(--m-accent-fg);transition:transform var(--m-t-fast),opacity var(--m-t-fast)}
+.chat-send:hover{transform:translateY(-1px)}
+.chat-send:disabled{opacity:.4;pointer-events:none}
+.chat-send svg{width:17px;height:17px}
+/* Pre-launch */
+.prelaunch{position:absolute;right:20px;bottom:20px;width:330px;background:var(--m-raised);border-radius:var(--m-r-card);box-shadow:var(--m-shadow-lg);padding:18px;z-index:450;display:none}
+.prelaunch.open{display:block;animation:screenIn var(--m-t-base) var(--m-ease-out)}
+.pl-title{font-size:14px;font-weight:700;margin-bottom:2px}
+.pl-sub{font-size:12px;color:var(--m-fg-subtle);margin-bottom:12px}
+.pl-stage{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:var(--m-fg-subtle)}
+.pl-stage .st-ic{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--m-surface-2);flex-shrink:0}
+.pl-stage.done{color:var(--m-fg-muted)}
+.pl-stage.done .st-ic{background:var(--m-accent-soft);color:var(--m-accent)}
+.pl-stage.act{color:var(--m-fg)}
+.pl-stage.act .st-ic{background:var(--m-accent-soft)}
+.pl-stage .st-ic svg{width:11px;height:11px}
+.spin{width:11px;height:11px;border:2px solid var(--m-accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pl-bar{height:5px;border-radius:var(--m-r-pill);background:var(--m-inset);margin:12px 0;overflow:hidden}
+.pl-bar i{display:block;height:100%;border-radius:var(--m-r-pill);background:var(--m-grad);width:0%;transition:width .3s var(--m-ease-move)}
+/* My skins */
+.skin-drop{border:1.5px dashed var(--m-border-strong);border-radius:var(--m-r-md);background:var(--m-inset);padding:22px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--m-fg-subtle);font-size:13px;font-weight:600;cursor:pointer;transition:all var(--m-t-fast);text-align:center}
+.skin-drop:hover{border-color:var(--m-accent);color:var(--m-accent);background:var(--m-accent-soft)}
+.skin-drop svg{width:20px;height:20px}
+
+/* Download queue in the sidebar */
+.dl-card{position:relative;background:var(--m-surface-2);border-radius:var(--m-r-ctl);padding:10px 12px;margin-bottom:8px;cursor:default;transition:background var(--m-t-fast)}
+.dl-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-steps{max-height:0;opacity:0;overflow:hidden;transition:max-height var(--m-t-base) var(--m-ease-out),opacity var(--m-t-fast),margin var(--m-t-base)}
+.dl-card:hover .dl-steps{max-height:220px;opacity:1;margin-top:10px}
+.dl-step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--m-fg-faint);padding:3px 0}
+.dl-step.done{color:var(--m-fg-muted)}
+.dl-step.act{color:var(--m-fg)}
+.dl-step-ic{width:14px;height:14px;display:grid;place-items:center;flex:none}
+.dl-step-ic svg{width:12px;height:12px;color:var(--m-accent)}
+.dl-card:hover{background:var(--m-raised)}
+.dl-top{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--m-fg-muted)}
+.dl-top svg{width:13px;height:13px;color:var(--m-accent)}
+.dl-pct{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--m-fg-subtle)}
+.dl-track{height:4px;border-radius:var(--m-r-pill);background:var(--m-inset);margin-top:8px;overflow:hidden}
+.dl-fill{height:100%;border-radius:var(--m-r-pill);background:var(--m-grad);width:63%;transition:width .4s var(--m-ease-move)}
+
+/* Account block at the sidebar bottom */
+.account{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--m-r-ctl);cursor:pointer;transition:background var(--m-t-fast),padding var(--m-side-t) var(--m-ease-move),gap var(--m-side-t) var(--m-ease-move)}
+.account:hover{background:var(--m-surface-2)}
+.ava{width:36px;height:36px;border-radius:8px;background:var(--m-inset);display:grid;place-items:center;overflow:hidden;flex-shrink:0}
+.ava canvas{width:32px;height:32px;image-rendering:pixelated}
+.ava.is-plus{border-radius:50%;outline:2px solid var(--m-accent);outline-offset:2px}
+.acc-meta{min-width:0;flex:1;max-width:170px;overflow:hidden;display:flex;flex-direction:column;gap:1px;transition:opacity .18s var(--m-ease-move) 60ms,max-width var(--m-side-t) var(--m-ease-move)}
+.acc-nick{display:block;font-size:13.5px;font-weight:650;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acc-kind{display:block;font-size:11.5px;color:var(--m-fg-subtle);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Account menu. Kept in the bundle because WKWebView ignores <style> tags
+   injected from JSX. */
+.acc-item:hover{background:var(--m-surface)}
+.acc-item-del{width:30px;height:30px;flex:none;display:grid;place-items:center;background:none;border:0;border-radius:8px;color:var(--m-fg-faint);cursor:pointer;transition:color var(--m-t-fast),background var(--m-t-fast)}
+.acc-item-del:hover{color:var(--m-danger);background:var(--m-danger-soft)}
+.acc-item-del svg{width:15px;height:15px}
+.acc-add-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;padding:0 12px;background:var(--m-surface);border:1px solid var(--m-border);color:var(--m-fg);border-radius:11px;cursor:pointer;font-size:13px;font-weight:600;line-height:1;transition:background var(--m-t-fast),border-color var(--m-t-fast)}
+.acc-add-btn:hover{background:var(--m-surface-2);border-color:var(--m-accent)}
+.acc-add-btn svg{width:16px;height:16px;flex:none;color:var(--m-accent)}
+
+.acc-chevron{width:24px;height:24px;max-width:24px;flex-shrink:0;display:grid;place-items:center;color:var(--m-fg-faint);transition:transform var(--m-t-fast),color var(--m-t-fast),opacity .14s var(--m-ease-move),max-width var(--m-side-t) var(--m-ease-move)}
+.acc-chevron svg{width:16px;height:16px;display:block}
+.account:hover .acc-chevron{color:var(--m-fg-subtle);transform:translateX(2px)}
+
+/* ============ Content area ============ */
+.content{flex:1;min-width:0;overflow-y:auto;padding:14px 8px 8px 4px;scrollbar-gutter:stable}
+.screen{display:none;animation:screenIn var(--m-tab-ms,160ms) var(--m-ease-smooth)}
+.screen.on{display:block}
+@keyframes screenIn{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
+@keyframes screenFade{from{opacity:0}to{opacity:1}}
+#s-play{animation-name:screenFade}
+.page-head{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.page-head h1{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.page-head .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--m-fg-subtle)}
+.sec-title{font-size:16px;font-weight:650;margin:26px 0 12px;display:flex;align-items:center;gap:10px}
+.sec-title .cap{font-size:12px;font-weight:500;color:var(--m-fg-faint);margin-left:auto}
+.sec-title-row{justify-content:space-between}
+.sec-link{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--m-accent);font-size:13px;font-weight:600;cursor:pointer;padding:4px 6px;border-radius:8px;transition:background var(--m-t-fast)}
+.sec-link:hover{background:var(--m-accent-soft)}
+.sec-link svg{width:15px;height:15px}
+
+/* ============ Buttons (sm 40/r12/13 · md 48/r16/14 · lg 56/r16/15) ============ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;border-radius:var(--m-r-md);transition:all var(--m-t-fast);position:relative;overflow:hidden;white-space:nowrap}
+.btn:active{transform:scale(.98)}
+.btn.sm{height:40px;padding:0 16px;font-size:13px;border-radius:var(--m-r-ctl)}
+.btn.md{height:48px;padding:0 22px;font-size:14px}
+.btn.lg{height:56px;padding:0 30px;font-size:15px}
+.btn.primary{background:var(--m-grad);color:var(--m-accent-fg)}
+/* No accent glow: a blurred drop shadow spreads downwards only and read as a
+   lighting bug rather than as depth. */
+.btn.primary:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.btn.primary:active{transform:translateY(1px);filter:brightness(.95)}
+.btn.secondary{background:var(--m-surface-2);color:var(--m-fg)}
+.btn.secondary:hover{background:var(--m-raised)}
+.btn.ghost{color:var(--m-fg-muted)}
+.btn.ghost:hover{color:var(--m-fg);background:var(--m-surface-2)}
+.btn.danger{background:var(--m-danger-soft);color:var(--m-danger)}
+.btn.danger:hover{background:var(--m-danger);color:var(--m-accent-fg)}
+/* Running state: reads as a live status, not as a call to action. */
+.btn.running{background:var(--m-accent-soft);color:var(--m-accent);box-shadow:inset 0 0 0 1.5px var(--m-accent)}
+.btn.running:hover{background:var(--m-accent);color:var(--m-accent-fg)}
+.btn.running:hover .run-dot{background:var(--m-accent-fg)}
+.run-dot{width:9px;height:9px;border-radius:50%;background:var(--m-accent);flex-shrink:0;animation:run-pulse 1.6s ease-in-out infinite}
+@keyframes run-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.78)}}
+@media(prefers-reduced-motion:reduce){.run-dot{animation:none}}
+.mod-line{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--m-border)}
+.mod-line:last-child{border-bottom:0}
+.mod-mini{width:28px;height:28px;border-radius:8px;background:var(--m-surface-2);display:grid;place-items:center;color:var(--m-fg-subtle);flex-shrink:0}
+.mod-mini svg{width:14px;height:14px}
+.mod-line b{flex:1;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mod-line.off b{opacity:.5;text-decoration:line-through}
+.icon-btn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--m-fg-subtle);transition:all var(--m-t-fast)}
+.icon-btn:hover{background:var(--m-surface-2);color:var(--m-fg)}
+.icon-btn.del:hover{background:var(--m-danger-soft);color:var(--m-danger)}
+.btn.disabled,.btn[disabled]{opacity:.45;pointer-events:none}
+.btn svg{width:16px;height:16px}
+.btn.lg svg{width:18px;height:18px}
+/* Progress fill inside the play button */
+.btn .fill{position:absolute;inset:0;background:var(--m-grad);width:0%;transition:width .3s var(--m-ease-move);z-index:0}
+.btn .lbl{position:relative;z-index:1;display:inline-flex;align-items:center;gap:8px}
+.btn.installing{background:var(--m-surface-2);color:var(--m-fg)}
+.btn.installing .lbl{color:#fff;mix-blend-mode:difference}
+
+/* ============ Inputs ============ */
+.field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px}
+.input{display:flex;align-items:center;gap:10px;height:48px;padding:0 16px;border-radius:var(--m-r-md);background:var(--m-inset);transition:box-shadow var(--m-t-fast)}
+.input:focus-within{box-shadow:0 0 0 2px var(--m-accent)}
+.input input{flex:1;background:none;border:0;outline:0;font-size:14px;min-width:0}
+.input input::placeholder{color:var(--m-fg-faint)}
+.input svg{width:16px;height:16px;color:var(--m-fg-subtle)}
+.input.sm{height:40px;border-radius:var(--m-r-ctl);font-size:13px}
+
+/* ============ Pills, badges, segments ============ */
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--m-r-pill);font-size:12px;font-weight:600;background:var(--m-surface-2);color:var(--m-fg-muted);flex:none;white-space:nowrap;max-width:100%;overflow:hidden}
+.pill.acc{background:var(--m-accent-soft);color:var(--m-accent)}
+.pill.info{background:var(--m-info-soft);color:var(--m-info)}
+.pill.warn{background:var(--m-warning-soft);color:var(--m-warning)}
+.pill.danger{background:var(--m-danger-soft);color:var(--m-danger)}
+.pill.off{background:var(--m-surface-2);color:var(--m-fg-faint)}
+.pill.warn .dot{background:var(--m-warning)}
+.pill.danger .dot{background:var(--m-danger)}
+.pill.off .dot{background:var(--m-fg-faint)}
+.pill svg{width:13px;height:13px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--m-success);display:inline-block;flex:none}
+.segs{display:flex;gap:8px;flex-wrap:wrap}
+/* Mirrors the kit's .mk-segmented: three fill steps 4% / 8% / 12% plus an inset
+   highlight on the active one. */
+.seg{height:36px;padding:0 15px;border-radius:var(--m-r-pill);font-size:13px;font-weight:600;color:var(--m-fg-subtle);background:color-mix(in srgb,var(--m-fg) 4%,transparent);display:inline-flex;align-items:center;gap:7px;
+  transition:background-color 300ms var(--m-ease-move),color 180ms ease,box-shadow 300ms var(--m-ease-move)}
+.seg:hover{color:var(--m-fg);background:color-mix(in srgb,var(--m-fg) 8%,transparent)}
+.seg.on{background:color-mix(in srgb,var(--m-fg) 12%,transparent);color:var(--m-fg);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.seg svg{width:14px;height:14px}
+.segsel{background:none;border:0;outline:0;color:inherit;font:inherit;font-weight:600;cursor:pointer;padding:0 2px}
+.segsel option{background:var(--m-raised);color:var(--m-fg)}
+
+/* ============ Cards ============ */
+.card{background:var(--m-surface);border-radius:var(--m-r-card);padding:20px}
+.card.hoverable{transition:transform var(--m-t-fast) ease,background var(--m-t-base);cursor:pointer;position:relative;isolation:isolate}
+.card.hoverable::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(130% 90% at 50% 118%, var(--m-accent-soft) 0%, transparent 60%);opacity:0;transition:opacity var(--m-t-base);z-index:-1}
+.card.hoverable:hover{transform:translateY(-2px)}
+.card.hoverable:hover::after{opacity:1}
+
+/* ============ Login screen ============ */
+#scr-login{display:none}
+#scr-login.on{display:flex;flex:1;min-height:0}
+.login-wrap{flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;align-items:center;padding:0 24px 24px;min-height:0;overflow:auto}
+@media (max-height:720px){.login-form h1{font-size:22px}.login-form .sub{margin-bottom:16px}.or{margin:12px 0}.trust{margin-top:14px}}
+@media (max-width:900px){.login-wrap{grid-template-columns:minmax(0,1fr)}.login-art{display:none}}
+.login-form{max-width:400px;margin:0 auto;width:100%}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.login-mark{width:44px;height:44px;border-radius:12px;background:var(--m-grad);display:grid;place-items:center;color:var(--m-accent-fg)}
+.login-logo b{font-family:var(--m-font-brand);font-weight:700;font-size:17px}
+.login-logo span{display:block;font-family:var(--m-font);font-size:12px;font-weight:500;color:var(--m-fg-subtle);margin-top:2px}
+.login-form h1{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-bottom:6px}
+.login-form .sub{font-size:13.5px;color:var(--m-fg-subtle);margin-bottom:24px;line-height:1.5}
+.or{display:flex;align-items:center;gap:12px;color:var(--m-fg-faint);font-size:12px;margin:18px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--m-border)}
+.trust{display:flex;gap:9px;align-items:flex-start;margin-top:24px;font-size:12px;line-height:1.5;color:var(--m-fg-subtle)}
+.btn.ms{background:#FFFFFF;color:#1B1F1C}
+.btn.ms:hover{background:#F0F2F0}
+.ms-logo{width:16px;height:16px;fill:currentColor;opacity:.9}
+.login-reg{text-align:center;font-size:13px;color:var(--m-fg-subtle);margin-top:12px}
+.login-hint{margin-top:10px;line-height:1.55;max-width:34em}
+.linklike{color:var(--m-accent);font-weight:600;font-size:13px}
+.linklike:hover{text-decoration:underline}
+.trust svg{width:15px;height:15px;color:var(--m-accent);margin-top:1px}
+.login-art{position:relative;height:100%;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;padding:24px 20px 14px}
+/* Свечение отдельным слоем, а не drop-shadow: тень считается от краёв
+   картинки и на узком окне упиралась в границу колонки, обрываясь ровной
+   линией. Градиент гаснет раньше, поэтому обрезать нечего. */
+.login-art::before{
+  content:"";position:absolute;left:50%;bottom:6%;transform:translateX(-50%);
+  width:min(88%,560px);aspect-ratio:1;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(var(--m-accent-rgb),.22),rgba(var(--m-accent-rgb),0) 72%);
+}
+/* Ограничение по обеим сторонам: одна только высота на узком окне давала
+   картинку шире колонки, и герою срезало плечо. */
+.login-art img{
+  position:relative;width:auto;height:auto;max-width:100%;max-height:min(88%,620px);
+  object-fit:contain;filter:drop-shadow(0 22px 38px rgba(0,0,0,.45));
+  user-select:none;-webkit-user-drag:none;
+}
+
+/* ============ Play screen hero ============ */
+.hero-live-wrap{position:relative;z-index:5;margin-bottom:26px}
+.hero-live-wrap>.hero-tools{z-index:60}
+/* No contain:paint or will-change here: they trap the video inside the card layer,
+   and WebKit then repaints every frame on the CPU. */
+.hero-live{position:relative;border-radius:var(--m-r-card);overflow:hidden;height:300px;background:var(--m-inset);isolation:isolate;transform:translateZ(0)}
+.hero-live canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;z-index:0;opacity:0;transition:opacity var(--m-t-hero) var(--m-ease-out)}
+.hero-live canvas.ready{opacity:1}
+#wpPoster,#wpVideo{z-index:0;opacity:0;transition:opacity var(--m-t-hero) var(--m-ease-out)}
+#wpPoster.ready{opacity:1}
+/* Exactly 1, not .999: a translucent video also drops off the hardware layer. */
+#wpVideo.ready,.hero-live video.ready{opacity:1}
+.hero-live video{transform:translateZ(0);backface-visibility:hidden}
+.hero-scrim{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(10,12,11,.10) 0%,rgba(10,12,11,.06) 40%,rgba(10,12,11,.62) 100%);pointer-events:none}
+.hero-overlay{position:absolute;inset:0;z-index:2;display:flex;align-items:flex-end;padding:24px;gap:22px}
+.hero-body{flex:1;min-width:0;color:#F2F4F3}
+.hero-body .eyebrow{color:rgba(242,244,243,.72);margin-bottom:6px;text-shadow:0 1px 8px rgba(0,0,0,.4)}
+.hero-body h2{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.15;text-shadow:0 2px 14px rgba(0,0,0,.45)}
+.hero-meta{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.hero-meta .pill{background:rgba(12,14,13,.72);color:rgba(242,244,243,.88)}
+.hero-stats{display:flex;gap:18px;margin-top:12px;font-size:12.5px;color:rgba(242,244,243,.62)}
+.hero-stats b{color:rgba(242,244,243,.9);font-weight:600;font-variant-numeric:tabular-nums}
+.hero-cta{display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;gap:10px;flex-shrink:0}
+.hero-cta .ghost{color:rgba(242,244,243,.75)}
+.hero-cta .ghost:hover{color:#fff;background:rgba(255,255,255,.10)}
+/* Soft tints read as invisible over a photographic wallpaper: opaque glass instead. */
+.hero-cta .btn.running{background:rgba(12,14,13,.78);color:#9BEC8B;box-shadow:inset 0 0 0 1.5px rgba(155,236,139,.9),0 8px 24px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
+.hero-cta .btn.running:hover{background:var(--m-accent);color:#fff;box-shadow:inset 0 0 0 1.5px var(--m-accent),0 10px 28px rgba(0,0,0,.42)}
+.hero-cta .btn.running .run-dot{background:#9BEC8B;box-shadow:0 0 10px rgba(155,236,139,.75)}
+.hero-cta .btn.running:hover .run-dot{background:#fff;box-shadow:none}
+.hero-cta .btn.danger{background:rgba(12,14,13,.78);color:#FF9C92;box-shadow:inset 0 0 0 1.5px rgba(255,156,146,.75),0 8px 24px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
+.hero-cta .btn.danger:hover{background:var(--m-danger);color:#fff;box-shadow:inset 0 0 0 1.5px var(--m-danger),0 10px 28px rgba(0,0,0,.42)}
+.hero-cta .btn.glass{background:rgba(12,14,13,.72);color:rgba(242,244,243,.92);box-shadow:0 8px 24px rgba(0,0,0,.38);backdrop-filter:blur(10px)}
+.hero-cta .btn.glass:hover{background:rgba(12,14,13,.88);color:#fff;transform:translateY(-1px)}
+.hero-cta .btn.glass svg{color:var(--m-accent)}
+.hero-cta .btn.glass.on{color:#9BEC8B;box-shadow:inset 0 0 0 1.5px rgba(155,236,139,.9),0 8px 24px rgba(0,0,0,.38)}
+.hero-cta .btn.glass.on:hover{background:rgba(12,14,13,.88);color:#9BEC8B}
+/* Wallpaper switch button */
+.hero-tools{position:absolute;top:14px;right:14px;z-index:3;display:flex;gap:8px;align-items:center}
+.wp-btn{position:relative;z-index:3;height:32px;padding:0 12px;border-radius:var(--m-r-pill);background:rgba(12,14,13,.72);color:rgba(242,244,243,.85);font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:7px;transition:all var(--m-t-fast)}
+.wp-btn:hover{background:rgba(12,14,13,.88);color:#fff}
+.hero-gear{width:56px;height:56px;border-radius:var(--m-r-md);background:rgba(12,14,13,.72);color:rgba(242,244,243,.85);display:grid;place-items:center;transition:all var(--m-t-fast)}
+.hero-gear:hover{background:rgba(12,14,13,.8);color:#fff;transform:translateY(-1px)}
+.hero-gear svg{width:20px;height:20px}
+.wp-btn svg{width:14px;height:14px}
+.login-code-box{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.login-code{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:10px 12px;border-radius:var(--m-r-ctl);background:var(--m-inset);color:var(--m-fg);transition:background var(--m-t-fast)}
+.login-code:hover{background:var(--m-surface-2)}
+.login-code span{font-family:var(--m-mono);font-size:19px;font-weight:700;letter-spacing:.14em;line-height:1}
+.login-code svg{width:15px;height:15px;color:var(--m-fg-subtle);flex-shrink:0}
+.login-code-actions{display:flex;flex-wrap:wrap;gap:8px}
+.login-code-actions .btn{flex:1}
+.wp-pop{position:absolute;top:52px;right:14px;z-index:40;background:var(--m-raised);border-radius:var(--m-r-card);box-shadow:var(--m-shadow-lg);padding:12px;width:284px;display:none;max-height:min(72vh,520px);overflow-y:auto;overscroll-behavior:contain}
+.wp-pop.open{display:block;animation:screenIn var(--m-t-base) var(--m-ease-out)}
+.wp-pop .cap{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--m-fg-subtle);margin:14px 2px 10px}
+.wp-pop .cap:first-child{margin-top:2px}
+/* Своя загрузка - отдельная группа, а не ещё один фон в ряду: пока зазор
+   был нулевой, плитка «Загрузить» читалась как продолжение галереи. */
+.wp-grid~.wp-grid{margin-top:12px}
+.wp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wp-item{border-radius:10px;overflow:hidden;position:relative;height:64px;cursor:pointer;background:var(--m-inset);transition:transform var(--m-t-fast)}
+.wp-item:hover{transform:translateY(-1px)}
+.wp-item canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.wp-item span{position:absolute;left:8px;bottom:6px;font-size:11.5px;font-weight:650;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.6);z-index:1}
+.wp-item.on::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px var(--m-accent);border-radius:10px}
+.wp-item-ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--m-fg-subtle)}
+.wp-item-ph svg{width:20px;height:20px}
+/* Upload tile: icon and label stacked */
+.wp-item.wp-item-add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1.5px dashed var(--m-border-strong)}
+.wp-item.wp-item-add:hover{border-color:var(--m-accent)}
+.wp-item.wp-item-add .wp-item-ph{position:static;display:block}
+.wp-item.wp-item-add span{position:static;left:auto;bottom:auto;font-size:11px;font-weight:600;color:var(--m-fg-subtle);text-shadow:none}
+.wp-item.wp-item-add:hover .wp-item-ph,.wp-item.wp-item-add:hover span{color:var(--m-accent)}
+/* Delete a custom wallpaper from the picker */
+.wp-item-del{position:absolute;top:5px;right:5px;z-index:2;width:22px;height:22px;display:none;place-items:center;border:0;border-radius:7px;background:rgba(10,12,11,.72);color:#fff;cursor:pointer}
+.wp-item:hover .wp-item-del{display:grid}
+.wp-item-del:hover{background:var(--m-danger)}
+.wp-item-del svg{width:13px;height:13px}
+.wp-row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:0 2px}
+.wp-row .lab{font-size:13px;font-weight:600}
+/* Toggle */
+.tgl{width:38px;height:22px;border-radius:var(--m-r-pill);background:var(--m-inset);position:relative;cursor:pointer;transition:background var(--m-t-base);flex-shrink:0}
+.tgl::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--m-fg-subtle);transition:all var(--m-t-base) var(--m-ease-move)}
+.tgl.on{background:var(--m-accent)}
+.tgl.on::after{left:19px;background:var(--m-accent-fg)}
+/* Selection checkbox: a distinct shape from the on/off toggle in the same row.
+   Two identical switches on either side of a row read as the same control. */
+.chk{width:18px;height:18px;border-radius:5px;background:var(--m-inset);border:1.5px solid var(--m-border-strong);position:relative;cursor:pointer;transition:background var(--m-t-base),border-color var(--m-t-base);flex-shrink:0}
+.chk::after{content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid var(--m-accent-fg);border-width:0 2px 2px 0;transform:rotate(45deg) scale(.5);opacity:0;transition:all var(--m-t-base) var(--m-ease-move)}
+.chk:hover{border-color:var(--m-accent)}
+.chk.on{background:var(--m-accent);border-color:var(--m-accent)}
+.chk.on::after{opacity:1;transform:rotate(45deg) scale(1)}
+.chk.part{background:var(--m-accent);border-color:var(--m-accent)}
+.chk.part::after{opacity:1;left:3px;top:7px;width:10px;height:0;border-width:0 0 2px 0;transform:none}
+/* ============ Settings modal ============ */
+.modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.7);z-index:400;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity 240ms ease}
+.modal-bg.open{display:flex}
+.modal-bg.vis{opacity:1}
+.modal{width:540px;max-width:calc(100vw - 48px);max-height:86%;overflow-y:auto;background:var(--m-raised);border-radius:var(--m-r-card);box-shadow:var(--m-shadow-lg);padding:24px;transform:scale(.96) translateY(10px);transition:transform 320ms var(--m-ease-out)}
+/* One width scale for every dialog. Widths written inline on the element used
+   to win over both the density layer and the wide-screen layer, so a dialog
+   stayed at its 2019 size no matter how large the window or how the user set
+   the density. */
+.modal.mw-xs{width:420px}
+.modal.mw-sm{width:480px}
+.modal.mw-md{width:560px}
+.modal.mw-lg{width:640px}
+.modal.mw-xl{width:760px}
+.modal-bg.vis .modal{transform:none}
+.modal h3{font-size:19px;font-weight:700;margin-bottom:4px}
+.modal .sub{font-size:13px;color:var(--m-fg-muted);margin-bottom:18px}
+.pj-pane{max-height:min(56vh,620px);overflow-y:auto}
+/* Build picker: .bp-cover must stay positioned — .cover-img/.cover-ph are absolute and would otherwise fill the whole modal */
+.bp-list{display:flex;flex-direction:column;gap:6px;max-height:min(46vh,320px);overflow-y:auto}
+.bp-item{display:flex;align-items:center;gap:12px;width:100%;padding:9px 11px;border:0;border-radius:var(--m-r-ctl);background:color-mix(in srgb,var(--m-fg) 5%,transparent);color:inherit;text-align:left;cursor:pointer;transition:background-color var(--m-t-fast) ease}
+.bp-item:hover{background:color-mix(in srgb,var(--m-fg) 9%,transparent)}
+.bp-cover{position:relative;flex:none;width:44px;height:44px;border-radius:var(--m-r-mini);overflow:hidden;background:var(--m-inset)}
+.bp-cover .cover-ph svg.icon{width:22px;height:22px}
+.bp-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.bp-meta b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bp-meta span{font-size:12px;color:var(--m-fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bp-item>svg.icon{color:var(--m-fg-faint)}
+/* Filters: pill triggers plus an .mk-menu panel */
+.mk-pill-wrap{position:relative;display:inline-block}
+.mk-pill{cursor:pointer;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:var(--m-r-pill);background:color-mix(in srgb,var(--m-fg) 6%,transparent);font-size:13px;font-weight:600;color:var(--m-fg-muted);border:0;
+  transition:background-color 280ms var(--m-ease-move),color 180ms ease;white-space:nowrap}
+.mk-pill:hover{color:var(--m-fg);background:var(--m-raised)}
+.mk-pill.is-active{background:var(--m-accent-soft);color:var(--m-accent)}
+.mk-pill>svg{width:14px;height:14px;flex:none}
+.mk-pill .mk-chev-inline{width:14px;height:14px;transition:transform var(--m-t-fast)}
+.mk-pill.open .mk-chev-inline{transform:rotate(180deg)}
+.mk-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:80;max-height:min(60vh,340px);overflow-y:auto;padding:6px;border-radius:var(--m-r-card);background:var(--m-raised);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);animation:frMenuIn .14s ease}
+.mk-menu.closing{animation:frMenuOut .13s ease forwards;pointer-events:none}
+@keyframes frMenuOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-4px)}}
+@media(prefers-reduced-motion:reduce){.mk-menu,.mk-menu.closing{animation:none}}
+.mk-menu.end{left:auto;right:0}
+.mk-menu-opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 11px;border:0;background:none;border-radius:8px;color:var(--m-fg-muted);font-size:13px;font-weight:550;cursor:pointer;white-space:nowrap;transition:background var(--m-t-fast),color var(--m-t-fast)}
+.mk-menu-opt:hover{background:var(--m-surface-2);color:var(--m-fg)}
+.mk-menu-opt.on{color:var(--m-accent)}
+.mk-menu-lab{flex:1}
+.mk-menu-opt>svg{width:15px;height:15px;flex:none;color:var(--m-accent)}
+.mk-check{width:18px;height:18px;flex:none;display:grid;place-items:center;border-radius:5px;border:1.5px solid var(--m-border-strong);color:var(--m-accent-fg)}
+.mk-check.on{background:var(--m-accent);border-color:var(--m-accent)}
+.mk-check svg{width:12px;height:12px}
+/* Active filters row */
+.mk-chips{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.mk-chips-cap{font-size:12px;color:var(--m-fg-subtle);font-weight:600}
+.mk-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 12px;border-radius:var(--m-r-pill);background:var(--m-accent-soft);color:var(--m-accent);font-size:12.5px;font-weight:600}
+.mk-chip button{cursor:pointer;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;border:0;background:none;color:inherit}
+.mk-chip button:hover{background:color-mix(in srgb,var(--m-accent) 22%,transparent)}
+.mk-chip button svg{width:12px;height:12px}
+/* Mod filters panel */
+.mods-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.mods-filters .spacer{flex:1;min-width:8px}
+
+/* Custom dropdown replacing the native select */
+.m-select{position:relative;display:inline-block}
+.m-select-btn{display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 10px 0 12px;background:var(--m-surface-2);border:1px solid var(--m-border);border-radius:var(--m-r-ctl);color:var(--m-fg);font-size:12.5px;font-weight:600;cursor:pointer;transition:border-color var(--m-t-fast),background var(--m-t-fast)}
+.m-select-btn:hover{border-color:var(--m-border-strong)}
+.m-select-btn.open{border-color:var(--m-accent)}
+.m-select-btn:disabled{opacity:.5;pointer-events:none}
+.m-select-val{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-select-btn svg{width:15px;height:15px;flex:none;color:var(--m-fg-faint);transition:transform var(--m-t-fast)}
+.m-select-btn.open svg{transform:rotate(180deg)}
+.m-select-pop{position:fixed;z-index:470;max-height:320px;overflow-y:auto;overscroll-behavior:contain;padding:6px;border-radius:12px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);animation:frMenuIn .12s ease}
+.m-select-pop.closing{animation:frMenuOut .13s ease forwards;pointer-events:none}
+.m-select-opt{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border:0;background:none;border-radius:8px;color:var(--m-fg);font-size:12.5px;cursor:pointer;white-space:nowrap;transition:background var(--m-t-fast)}
+.m-select-opt:hover{background:var(--m-surface)}
+.m-select-opt.on{color:var(--m-accent)}
+.m-select-opt-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.m-select-opt-lab{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.m-select-opt-sub{font-size:11px;color:var(--m-fg-subtle)}
+.m-select-opt svg{width:15px;height:15px;flex:none;color:var(--m-accent)}
+.m-select-search{position:sticky;top:-6px;z-index:1;display:flex;align-items:center;gap:7px;margin:-6px -6px 6px;padding:9px 10px;background:var(--m-surface-2);border-bottom:1px solid var(--m-border)}
+.m-select-search svg{width:14px;height:14px;flex:none;color:var(--m-fg-faint)}
+.m-select-search input{flex:1;min-width:0;border:0;background:none;color:var(--m-fg);font-size:12.5px;font-weight:600;outline:none}
+.m-select-empty{padding:10px;font-size:12px;color:var(--m-fg-subtle)}
+.nb-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px}
+.nb-icon{position:relative;width:76px;height:76px;flex:none;border-radius:16px;overflow:hidden;background:var(--m-inset);display:grid;place-items:center;cursor:pointer;border:1px solid var(--m-border);transition:border-color var(--m-t-fast),transform var(--m-t-fast)}
+.nb-icon img{width:100%;height:100%;object-fit:cover}
+.nb-icon:active{transform:scale(.97)}
+.nb-icon-hint{position:absolute;left:0;right:0;bottom:0;padding:4px 0;text-align:center;font-size:10.5px;font-weight:700;background:color-mix(in srgb,var(--m-bg) 72%,transparent);color:var(--m-fg-muted)}
+@media (hover: hover) and (pointer: fine){.nb-icon:hover{border-color:var(--m-accent)}}
+
+
+/* Custom slider replacing native input[type=range] */
+.m-slider{display:flex;align-items:center;height:22px;cursor:pointer;touch-action:none;user-select:none}
+.m-slider:focus-visible{outline:none}
+.m-slider-track{position:relative;width:100%;height:6px;border-radius:var(--m-r-pill);background:var(--m-inset)}
+.m-slider-fill{position:absolute;left:0;top:0;height:100%;border-radius:var(--m-r-pill);background:var(--m-grad)}
+.m-slider-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--m-accent-fg);border:2px solid var(--m-accent);transform:translate(-50%,-50%);box-shadow:var(--m-shadow-sm,0 1px 3px rgba(0,0,0,.3));transition:transform var(--m-t-fast)}
+.m-slider:hover .m-slider-thumb,.m-slider:focus-visible .m-slider-thumb{transform:translate(-50%,-50%) scale(1.12)}
+
+.set-screen{max-width:760px}
+.set-tabs{position:sticky;top:-14px;z-index:3;display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 10px;margin:-4px 0 0;background:var(--m-bg);border-bottom:1px solid var(--m-border)}
+.set-tab{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border:1px solid transparent;border-radius:var(--m-r-pill);background:var(--m-inset);color:var(--m-fg-muted);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background var(--m-t-fast),color var(--m-t-fast),border-color var(--m-t-fast)}
+.set-tab svg{width:15px;height:15px}
+.set-tab:hover{color:var(--m-fg);background:var(--m-surface)}
+.set-tab.on{background:var(--m-accent-soft);border-color:var(--m-accent);color:var(--m-accent)}
+.set-steps{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;max-width:420px;font-size:12.5px;line-height:1.5;color:var(--m-fg-muted)}
+.set-steps li::marker{color:var(--m-accent);font-weight:700}
+.set-row.focus-flash{animation:setFlash 2.4s var(--m-ease-out);border-radius:10px}
+@keyframes setFlash{0%,70%{background:var(--m-accent-soft);box-shadow:inset 3px 0 0 var(--m-accent)}100%{background:transparent;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.set-row.focus-flash{animation:none;background:var(--m-accent-soft)}}
+.set-group{margin-top:18px}
+.set-group .cap{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--m-fg-subtle);margin-bottom:10px}
+.set-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--m-border)}
+.set-row:last-child{border-bottom:0}
+.set-row + .side-cap{padding-top:12px}
+.set-row .lab{flex:1;font-size:14px;font-weight:600}
+.set-row .lab small{display:block;font-size:12px;font-weight:500;color:var(--m-fg-subtle);margin-top:2px}
+.set-val{font-size:13px;color:var(--m-fg-muted);font-variant-numeric:tabular-nums}
+/* Slider */
+.slider{-webkit-appearance:none;width:190px;height:6px;border-radius:var(--m-r-pill);background:linear-gradient(90deg,var(--m-accent) 0%,var(--m-accent) var(--p,38%),var(--m-inset) var(--p,38%));outline:none}
+.slider::-webkit-slider-thumb{-webkit-appearance:none;width:19px;height:19px;border-radius:50%;background:var(--m-accent-fg);border:2px solid var(--m-accent);cursor:pointer;transition:transform var(--m-t-fast)}
+.slider::-webkit-slider-thumb:hover{transform:scale(1.12)}
+.cover-ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--m-fg-faint)}
+.cover-ph svg{width:34px;height:34px}
+/* The group name is typed by the user and can also arrive from the groups file
+   written outside the launcher, so the heading bounds it instead of trusting it. */
+.build-group-cap{grid-column:1/-1;margin:6px 2px 2px;font-size:12px;font-weight:700;color:var(--m-fg-subtle);text-transform:uppercase;letter-spacing:.04em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.build-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:10px}
+/* Equal-width columns via grid-auto-flow, so the row can never wrap. */
+.build-grid.one-line{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,132px);justify-content:start;gap:9px;container-type:inline-size}
+.build-grid.one-line .build-body{padding:7px 9px 9px}
+.build-grid.one-line .build-body b{font-size:12px}
+.build-grid.one-line .build-body .meta{font-size:11px;margin-top:2px}
+.build-grid.one-line .build-hours{margin-top:2px}
+.build-grid.one-line .mini-play{width:42px;height:42px}
+.build-grid.one-line .mini-play svg.icon{width:19px;height:19px}
+.build-grid.one-line .build-new{font-size:11.5px}
+@container (max-width:1050px){.build-grid.one-line .build-card:nth-child(n+7){display:none}}
+@container (max-width:780px){.build-grid.one-line .build-card:nth-child(n+5){display:none}}
+.build-card{padding:0;overflow:hidden;text-align:left;display:flex;flex-direction:column}
+.build-cover{width:100%;aspect-ratio:1;height:auto;flex:none;display:grid;place-items:center;background:var(--m-inset);position:relative;overflow:hidden}
+.cover-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.cover-img.block{object-fit:contain;padding:13%;image-rendering:auto;background:var(--m-inset)}
+/* The whole cover launches the build, so the badge sits in the middle of it and
+   the scrim says the picture itself is the target; the text below still opens
+   the build settings. */
+.build-cover::after{content:'';position:absolute;inset:0;background:color-mix(in srgb,var(--m-inset) 72%,transparent);opacity:0;pointer-events:none;transition:opacity 160ms ease}
+.build-card:hover .build-cover::after{opacity:1}
+.build-cover .mini-play{position:absolute;left:50%;top:50%;z-index:1;width:52px;height:52px;border-radius:var(--m-r-pill);background:var(--m-grad);color:var(--m-accent-fg);display:grid;place-items:center;opacity:0;transform:translate(-50%,-50%) scale(.86);
+  transition:opacity 160ms ease,transform 260ms var(--m-ease-out)}
+.build-cover .mini-play svg.icon{width:23px;height:23px}
+.build-card:hover .mini-play{opacity:1;transform:translate(-50%,-50%)}
+.build-cover .mini-play:hover{transform:translate(-50%,-50%) scale(1.08)}
+.build-cover .mini-play:active{transform:translate(-50%,-50%) scale(.94)}
+/* The arrow keeps nudging down while the card is hovered: the button installs
+   something, and the pull reads as that before the tooltip does. */
+.build-card:hover .ready-go svg{animation:dl-nudge 1.5s var(--m-ease-move) infinite}
+@keyframes dl-nudge{0%,62%,100%{transform:translateY(0)}30%{transform:translateY(3px)}}
+@media(prefers-reduced-motion:reduce){.build-card:hover .ready-go svg{animation:none}}
+.build-run{position:absolute;left:6px;top:6px;display:inline-flex;align-items:center;gap:5px;padding:3px 8px 3px 6px;border-radius:var(--m-r-pill);background:rgba(12,14,13,.78);color:#fff;font-size:10.5px;font-weight:650;letter-spacing:.01em}
+.build-card.running .build-body b{color:var(--m-accent)}
+.build-body{padding:9px 11px 11px;display:flex;flex-direction:column;gap:1px;flex:1 1 auto}
+.build-body b{font-size:13px;font-weight:650;display:block;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.build-body .meta{font-size:11.5px;color:var(--m-fg-subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.build-card.selected .build-body{background:var(--m-accent-soft)}
+.build-card.selected .build-body b{color:var(--m-accent)}
+.ready-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.build-card.ready-card{flex-direction:row;align-items:stretch}
+.build-card.ready-card .build-cover{width:120px;height:120px;min-height:0;aspect-ratio:auto;flex:none;align-self:center;margin:12px 0 12px 12px;border-radius:12px}
+.build-card.ready-card .build-cover .mini-play{right:8px;bottom:8px;width:30px;height:30px;border-radius:9px}
+.build-card.ready-card .build-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:12px 15px}
+.build-card.ready-card .desc{font-size:12.5px;color:var(--m-fg-muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.build-card.ready-card .meta{margin-top:0}
+@media(max-width:1180px){.ready-grid{grid-template-columns:1fr}}
+
+.build-new{display:grid;place-items:center;min-height:100%;border-radius:var(--m-r-card);background:transparent;border:1.5px dashed var(--m-border-strong);color:var(--m-fg-subtle);font-weight:600;font-size:12.5px;transition:all var(--m-t-fast)}
+.build-new:hover{border-color:var(--m-accent);color:var(--m-accent);background:var(--m-accent-soft)}
+.build-new .inner{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px;text-align:center}
+.build-new svg{width:18px;height:18px}
+
+/* ============ Server row (compact ~100px, banner 296×72) ============ */
+.srv-row{display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--m-surface);border-radius:var(--m-r-card);transition:transform var(--m-t-fast),background var(--m-t-base);cursor:pointer;position:relative;isolation:isolate}
+.srv-row::after{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(130% 90% at 50% 118%, var(--m-accent-soft) 0%, transparent 60%);opacity:0;transition:opacity var(--m-t-base);z-index:-1}
+.srv-row:hover{transform:translateY(-2px)}
+.srv-row:hover::after{opacity:1}
+.srv-rank{min-width:34px;height:24px;padding:0 8px;border-radius:var(--m-r-pill);background:var(--m-surface-2);display:grid;place-items:center;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--m-fg-muted);flex-shrink:0}
+.srv-rank.promo{background:var(--m-accent-soft);color:var(--m-accent)}
+/* Канон 7.9 / MkServerRow: топ-3 — та же пилюля accent-soft, без медальных
+   135°-градиентов (запрет 5.2). Отличие — только цвет текста/акцент. */
+.srv-rank.medal{background:var(--m-accent-soft);color:var(--m-accent)}
+.pill.lic-cracked{background:var(--m-warning-soft,rgba(245,146,59,.14));color:var(--m-warning,#F5923B)}
+/* Server sort panel */
+.srv-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+/* Featured server card */
+.srv-feature{position:relative;overflow:hidden;border-radius:var(--m-r-card);background:var(--m-surface);margin-bottom:16px;cursor:pointer;isolation:isolate;min-height:184px;display:flex}
+.srv-feature-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;filter:saturate(1.05)}
+.srv-feature-scrim{position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,var(--m-surface) 0%,color-mix(in srgb,var(--m-surface) 82%,transparent) 46%,color-mix(in srgb,var(--m-surface) 30%,transparent) 100%)}
+.srv-feature-inner{display:flex;align-items:center;gap:20px;flex-wrap:wrap;width:100%;padding:22px}
+.srv-feature-main{flex:1;min-width:260px;display:flex;flex-direction:column;gap:8px}
+.srv-feature-badge{align-self:flex-start;padding:4px 10px;border-radius:var(--m-r-pill);background:var(--m-accent-soft);color:var(--m-accent);font-size:11.5px;font-weight:700;letter-spacing:.03em}
+.srv-feature-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.srv-feature-title img{width:40px;height:40px;border-radius:9px;object-fit:cover}
+.srv-feature-title h2{font-size:22px;font-weight:750}
+.srv-feature-motd,.srv-feature-desc{font-size:13px;line-height:1.5;color:var(--m-fg-muted);max-width:640px}
+.srv-feature-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+.srv-feature-online{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--m-fg-subtle)}
+.srv-feature-online.on{color:var(--m-fg)}
+.srv-feature-online b{font-variant-numeric:tabular-nums}
+.srv-feature-ip{font-size:12.5px;color:var(--m-fg-subtle);font-variant-numeric:tabular-nums}
+.srv-feature-cta{display:flex;flex-direction:column;gap:10px;min-width:170px}
+.srv-feature-cta .btn{width:100%}
+.srv-ava{width:44px;height:44px;border-radius:8px;background:var(--m-surface-2);display:grid;place-items:center;font-size:17px;font-weight:700;color:var(--m-fg-subtle);flex-shrink:0}
+.srv-banner{width:296px;height:72px;border-radius:var(--m-r-ctl);overflow:hidden;flex-shrink:0;position:relative;background:var(--m-inset)}
+.motd{position:absolute;inset:0;padding:10px 14px;font-family:var(--m-mono);font-size:11.5px;line-height:1.45;color:#7ED96F;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.motd .w{color:#E8E6E3}.motd .y{color:#F5D538}.motd .b{color:#6AA9E9}
+.srv-body{flex:1;min-width:0}
+.srv-name{display:flex;align-items:center;flex-wrap:wrap;gap:5px 9px;min-width:0}
+.srv-name b{font-size:15px;font-weight:650;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srv-desc{display:block;font-size:13px;color:var(--m-fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.srv-meta{display:block;font-size:12px;color:var(--m-fg-faint);margin-top:5px}
+.srv-meta b{color:var(--m-fg-subtle);font-weight:600;font-variant-numeric:tabular-nums}
+.srv-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
+.srv-online{font-size:12.5px;color:var(--m-fg-subtle);display:flex;align-items:center;gap:7px}
+.srv-online b{color:var(--m-fg-muted);font-weight:650;font-variant-numeric:tabular-nums}
+
+/* ============ Mod catalog ============ */
+.mod-row{display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--m-surface);border-radius:var(--m-r-card)}
+.mod-icon{width:52px;height:52px;border-radius:10px;background:var(--m-inset);display:grid;place-items:center;color:var(--m-fg-faint);overflow:hidden;flex-shrink:0}
+.mod-icon img{width:100%;height:100%;object-fit:cover}
+.mod-icon svg{width:22px;height:22px}
+.mod-body{flex:1;min-width:0}
+.mod-name{display:flex;align-items:baseline;gap:8px}
+.mod-name b{font-size:14.5px;font-weight:650}
+.mod-name span{font-size:12.5px;color:var(--m-fg-subtle)}
+.mod-desc{display:block;font-size:13.5px;line-height:1.45;color:var(--m-fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}
+.mod-meta{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--m-fg-subtle);margin-top:5px}
+.mod-meta b{color:var(--m-fg);font-weight:650;font-variant-numeric:tabular-nums}
+.mod-row:hover .mod-desc{color:var(--m-fg)}
+
+/* ============ Skins ============ */
+/* Фигура — главное на экране: примеряют, глядя на неё, а каталог рядом лишь
+   подаёт вещи. Поэтому колонка с ней шире, чем была. */
+.skins-grid{display:grid;grid-template-columns:380px 1fr;gap:14px;align-items:start}
+/* Skin preview stays pinned while the catalog scrolls */
+.skin-preview{display:flex;flex-direction:column;align-items:center;padding:26px 20px 22px;position:sticky;top:0;align-self:start;max-height:calc(100dvh - 60px);overflow-y:auto;scrollbar-gutter:stable}
+.skin-stage{width:190px;height:270px;border-radius:var(--m-r-ctl);background:var(--m-inset);display:grid;place-items:center;position:relative;overflow:hidden}
+.skin-stage canvas{width:100%;height:100%;display:block;image-rendering:auto}
+.skin-stage{cursor:grab;user-select:none}
+.skin-stage:active{cursor:grabbing}
+.icon-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;max-height:180px;overflow-y:auto;background:var(--m-inset);border-radius:12px;padding:10px}
+.icon-cell{aspect-ratio:1;border-radius:8px;display:grid;place-items:center;cursor:pointer;transition:transform var(--m-t-fast),background var(--m-t-fast)}
+.icon-cell:hover{background:var(--m-surface-2);transform:translateY(-1px)}
+.icon-cell img{width:86%;height:86%;object-fit:contain;image-rendering:auto}
+.icon-cell.on{box-shadow:inset 0 0 0 2px var(--m-accent),0 4px 14px -4px var(--cell-color,var(--m-accent));transform:translateY(-1px)}
+
+/* Icon editor: background + symbol are mixed into one PNG, so the panel only
+   needs a live preview at the three sizes a build icon is actually shown at. */
+.ic-ed{width:720px;padding:20px}
+.ic-ed-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.ic-ed-body{display:grid;grid-template-columns:186px 1fr;gap:18px;align-items:start}
+.ic-ed-side{display:flex;flex-direction:column;gap:12px}
+.ic-ed-stage{background:var(--m-inset);border-radius:var(--m-r-card);padding:16px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.ic-ed-big{width:118px;height:118px;border-radius:var(--m-r-card);overflow:hidden;flex:none}
+.ic-ed-big img{width:100%;height:100%;display:block}
+.ic-ed-sizes{display:flex;align-items:flex-end;gap:10px}
+.ic-ed-mini{border-radius:var(--m-r-mini);overflow:hidden;flex:none}
+.ic-ed-mini img{width:100%;height:100%;display:block}
+.ic-ed-roll{justify-content:center}
+.ic-ed-err{font-size:12.5px;line-height:1.5;color:var(--m-danger);margin:0}
+.ic-ed-panes{min-width:0}
+.ic-ed-cap{font-size:12.5px;font-weight:650;color:var(--m-fg-muted);margin:0 0 8px}
+.ic-bg-row{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:0 0 16px}
+.ic-bg{aspect-ratio:1;border:0;border-radius:12px;cursor:pointer;display:grid;place-items:center;outline:2px solid transparent;outline-offset:2px;transition:transform var(--m-t-fast),outline-color var(--m-t-fast)}
+.ic-bg.on{outline-color:var(--m-accent)}
+.ic-bg:active{transform:scale(.94)}
+.ic-bg-tick{width:20px;height:20px;border-radius:50%;background:var(--m-raised);color:var(--m-fg);display:grid;place-items:center}
+.ic-bg-tick svg.icon{width:13px;height:13px}
+.ic-ed-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px}
+.ic-ed-foot .faint-note{margin-top:0;max-width:300px}
+@media (hover:hover) and (pointer:fine){.ic-bg:hover{transform:translateY(-1px)}}
+@media (max-width:860px){.ic-ed-body{grid-template-columns:1fr}.ic-ed-stage{flex-direction:row;justify-content:center}}
+.cape-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%}
+.cape-tile{position:relative;height:64px;border-radius:10px;overflow:hidden;background:var(--m-inset);cursor:pointer;display:grid;place-items:center;transition:transform var(--m-t-fast)}
+.cape-tile:hover{transform:translateY(-1px)}
+.cape-tile img{height:56px;image-rendering:pixelated}
+.cape-tile span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:9.5px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+.cape-tile.on{box-shadow:inset 0 0 0 2px var(--m-accent)}
+.cape-tile.empty{color:var(--m-fg-subtle);font-size:11px;font-weight:600}
+.skin-rot{position:absolute;bottom:8px;left:8px;right:8px;text-align:center;font-size:10.5px;line-height:1.2;color:var(--m-fg-faint);pointer-events:none;transition:opacity var(--m-t-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skin-loader{width:34px;height:34px;border-radius:50%;border:3px solid var(--m-border);border-top-color:var(--m-accent);animation:skin-spin .8s linear infinite}
+@keyframes skin-spin{to{transform:rotate(360deg)}}
+.skin-nick{font-size:16px;font-weight:700;margin-top:16px}
+.skin-sub{font-size:12px;color:var(--m-fg-subtle);margin-top:3px}
+.skin-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.skin-cards + .skin-cards{margin-top:12px}
+.skin-card{padding:0;overflow:hidden;text-align:left;border:1.5px solid transparent;transition:border-color var(--m-t-fast),transform var(--m-t-fast)}
+.skin-card:hover{transform:translateY(-2px)}
+.skin-card.on{border-color:var(--m-accent)}
+.skin-thumb{height:158px;display:grid;place-items:center;background:radial-gradient(120% 90% at 50% 22%,color-mix(in srgb,var(--m-accent) 14%,var(--m-surface-2)) 0%,var(--m-inset) 78%)}
+.skin-body3d{height:132px;width:auto;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 6px 11px rgba(0,0,0,.4))}
+.skin-body3d-slot{display:grid;place-items:center}
+.skin-body3d-slot.is-loading{position:relative;overflow:hidden;border-radius:12px;background:color-mix(in srgb,var(--m-fg) 4%,transparent)}
+.skin-body3d-slot.is-loading::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--m-fg) 7%,transparent),transparent);animation:skin-sweep 1.6s infinite}
+@keyframes skin-sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){.skin-body3d-slot.is-loading::after{animation:none}}
+.skin-thumb canvas{image-rendering:pixelated;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+.skin-thumb>svg{width:30px;height:30px;color:var(--m-fg-faint)}
+.skin-card.skin-add{border:1.5px dashed var(--m-border-strong);cursor:pointer}
+.skin-card.skin-add:hover{border-color:var(--m-accent)}
+.skin-card.skin-add:hover .skin-thumb>svg{color:var(--m-accent)}
+/* Карточка заказа - предложение, а не ещё один скин в ряду: рамкой акцента
+   она видна среди своих, иначе её пролистывают. */
+.skin-card.skin-order{border:1.5px solid color-mix(in srgb,var(--m-accent) 45%,transparent);cursor:pointer}
+.skin-card.skin-order .skin-thumb{background:radial-gradient(120% 90% at 50% 22%,color-mix(in srgb,var(--m-accent) 22%,var(--m-surface-2)) 0%,var(--m-inset) 80%)}
+.skin-card.skin-order .skin-thumb>svg{color:var(--m-accent)}
+.skin-card.skin-order:hover{border-color:var(--m-accent)}
+.skin-body{padding:10px 12px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.skin-body b{display:block;width:100%;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skin-body>span{display:block;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ============ Hosting ============ */
+.host-grid{display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start}
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--m-surface-2);border-radius:var(--m-r-ctl);padding:14px 16px}
+.kpi .cap{font-size:11.5px;color:var(--m-fg-subtle);font-weight:600}
+.kpi .val{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;letter-spacing:-.01em}
+.kpi .val span{font-size:13px;color:var(--m-fg-subtle);font-weight:500}
+.bar{height:6px;border-radius:var(--m-r-pill);background:var(--m-inset);margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:var(--m-r-pill);background:var(--m-grad)}
+.ip-pill{display:inline-flex;align-items:center;gap:9px;height:36px;padding:0 14px;border-radius:var(--m-r-pill);background:var(--m-inset);font-family:var(--m-mono);font-size:13px;cursor:pointer;transition:background var(--m-t-fast)}
+.ip-pill:hover{background:var(--m-surface-2)}
+.ip-pill svg{width:14px;height:14px;color:var(--m-fg-subtle)}
+
+/* Toast */
+.toast{position:absolute;right:20px;bottom:20px;max-width:min(420px,calc(100% - 40px));background:var(--m-raised);border-radius:var(--m-r-card);box-shadow:var(--m-shadow-lg);padding:14px 18px;display:flex;align-items:center;gap:11px;font-size:13.5px;font-weight:600;opacity:0;transform:translateY(8px);pointer-events:none;transition:all var(--m-t-slow) var(--m-ease-out);z-index:500}
+.toast.show{opacity:1;transform:none}
+/* A build name goes into the toast as the user typed it: the notice wraps and
+   stops at four lines instead of growing across the window. */
+#toastMsg{min-width:0;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.toast svg{width:17px;height:17px;flex:none;color:var(--m-success)}
+.toast.error svg,.toast.error svg.icon{color:var(--m-danger)}
+.toast.error{box-shadow:var(--m-shadow-lg),inset 3px 0 0 var(--m-danger)}
+.toast.show.has-act{pointer-events:auto}
+.toast-act{margin-left:4px;height:26px;padding:0 11px;border:1px solid var(--m-accent);border-radius:var(--m-r-pill);background:var(--m-accent-soft);color:var(--m-accent);font-size:12.5px;font-weight:650;cursor:pointer;white-space:nowrap}
+.toast-act:hover{background:var(--m-accent);color:var(--m-accent-fg)}
+
+.faint-note{font-size:12.5px;color:var(--m-fg-subtle);margin-top:10px;line-height:1.6}
+.stack{display:flex;flex-direction:column;gap:10px}
+
+/* ============ Installed content card ============ */
+.mod-card{border-radius:var(--m-r-ctl);transition:background var(--m-t-fast)}
+.mod-card+.mod-card{border-top:1px solid var(--m-border)}
+.mod-card:hover{background:var(--m-surface-2)}
+.mod-card.open{background:var(--m-surface-2)}
+.mod-card-row{display:flex;align-items:center;gap:10px;padding:8px}
+.mod-card-row .chk,.mod-card-row .tgl,.mod-card-row .icon-btn,.mod-card-row .btn{flex:none}
+.mod-art{width:36px;height:36px;border-radius:9px;background:var(--m-surface-2);display:grid;place-items:center;color:var(--m-fg-subtle);flex:none;overflow:hidden}
+.mod-art img{width:100%;height:100%;object-fit:cover;image-rendering:auto}
+.mod-art svg{width:16px;height:16px}
+.mod-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mod-card-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:650;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mod-card-sub{font-size:12px;color:var(--m-fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.mod-ver{font-weight:600;font-size:10.5px;color:var(--m-fg-subtle);background:var(--m-inset);padding:1px 6px;border-radius:var(--m-r-pill);flex:none}
+.mod-upd{font-size:10px;font-weight:700;color:var(--m-accent);background:var(--m-accent-soft);padding:1px 6px;border-radius:var(--m-r-pill);flex:none}
+.mod-tag{font-size:10px;font-weight:600;color:var(--m-fg-subtle);border:1px solid var(--m-border-strong);padding:0 6px;border-radius:var(--m-r-pill);flex:none;text-transform:capitalize}
+.mod-card.off .mod-card-title{opacity:.5;text-decoration:line-through}
+.mod-card.off .mod-art{opacity:.45}
+.mod-info.on{background:var(--m-accent-soft);color:var(--m-accent)}
+.mod-card-info{padding:0 10px 12px 54px;display:flex;flex-direction:column;gap:8px}
+.mod-card-desc{font-size:12.5px;line-height:1.55;color:var(--m-fg-muted);margin:0}
+.mod-card-facts{display:flex;flex-wrap:wrap;gap:6px}
+.mod-card-facts .pill{height:22px;font-size:11px}
+.mod-card-file{font-family:var(--m-mono);font-size:11px;color:var(--m-fg-faint);word-break:break-all}
+.mod-card-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chat-srv-pop{position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:14px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);z-index:20}
+.chat-srv-row{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:10px;background:none;color:var(--m-fg);font-size:13px;text-align:left;cursor:pointer;transition:background var(--m-t-fast)}
+.chat-srv-row:hover{background:var(--m-surface)}
+.chat-srv-row svg{width:15px;height:15px;flex:none;color:var(--m-fg-faint)}
+.chat-srv-name{flex:none;max-width:45%;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-srv-addr{flex:1;min-width:0;font-size:11.5px;color:var(--m-fg-faint);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-srv-manual{display:flex;align-items:center;gap:6px;margin-top:4px;padding-top:8px;border-top:1px solid var(--m-border)}
+.chat-srv-manual .input{flex:1;min-width:0}
+
+/* The rail is the largest motion in the app; honour the system setting. */
+@media(prefers-reduced-motion:reduce){
+  .sidebar,.nav-item,.nav-label,.acc-meta,.quick-meta,.side-collapse,.side-collapse-ic,.account,.quick-open,.quick-row,.quick-play,.acc-chevron{transition:none}
+}
+
+/* Стикер в ленте. Пузыря у него нет: плита и отступы вокруг рисунка делают из
+   стикера вложение. Размер тот же, что на сайте (.mk-sticker в copper-kit.css),
+   иначе один и тот же набор выглядел бы двумя разными. */
+.msg.sticker{background:none;padding:0;min-width:0;max-width:100%}
+.msg-sticker{width:128px;height:128px;object-fit:contain;display:block}
+.chat-sticker-pop{position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:14px;background:var(--m-surface-2);border:1px solid var(--m-border);box-shadow:var(--m-shadow-lg);z-index:20}
+.chat-sticker-tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.chat-sticker-tabs::-webkit-scrollbar{display:none}
+.chat-sticker-tab{flex:none;padding:3px 9px;border:0;border-radius:9px;background:none;color:var(--m-fg-subtle);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;transition:color var(--m-t-fast),background var(--m-t-fast)}
+.chat-sticker-tab:hover{color:var(--m-fg)}
+.chat-sticker-tab.on{background:var(--m-accent-soft);color:var(--m-accent)}
+.chat-sticker-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;max-height:240px;overflow-y:auto;overscroll-behavior:contain}
+.chat-sticker-cell{display:grid;place-items:center;padding:4px;border:0;border-radius:10px;background:none;cursor:pointer;transition:background var(--m-t-fast)}
+.chat-sticker-cell:hover{background:var(--m-surface)}
+.chat-sticker-cell img{width:56px;height:56px;object-fit:contain;display:block}
+
+/* Перетаскивание сборки: слой поверх экрана, пока файл висит над окном. */
+.pack-drop{position:absolute;inset:0;z-index:480;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.55);pointer-events:none;animation:packDropIn var(--m-t-fast) ease-out}
+.pack-drop-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 34px;border-radius:18px;background:var(--m-surface-2);border:1px dashed var(--m-accent);box-shadow:var(--m-shadow-lg);text-align:center}
+.pack-drop-card svg{width:26px;height:26px;color:var(--m-accent)}
+.pack-drop-card b{font-size:15px;font-weight:700;color:var(--m-fg)}
+.pack-drop-card span{font-size:12.5px;color:var(--m-fg-subtle);max-width:320px;overflow-wrap:anywhere}
+.pack-drop.busy .pack-drop-card{border-style:solid;border-color:var(--m-border)}
+@keyframes packDropIn{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.pack-drop{animation:none}}

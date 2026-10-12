@@ -1,0 +1,133 @@
+[package]
+name = "copper-launcher"
+version = "2.0.0"
+description = "Copper Launcher — безопасный лаунчер Minecraft"
+authors = ["Copper"]
+edition = "2021"
+license = "GPL-3.0-only"
+
+[workspace]
+members = ["."]
+default-members = ["."]
+
+[lib]
+name = "copper_launcher_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# macos-private-api: the transparent overlay window is a private API on macOS,
+# and the cross build calls cargo directly, so the CLI never derives it from
+# tauri.conf.json
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "macos-private-api"] }
+
+tauri-plugin-process = "2"
+tauri-plugin-autostart = "~2.5.1"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-deep-link = "2"
+# opens links and folders without a shell, so URL metacharacters cannot be
+# executed as commands
+tauri-plugin-opener = "2"
+# the webview is not a secure context, so navigator.clipboard is unavailable
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+encoding_rs = "0.8"
+# rustls rather than native-tls: on macOS native-tls goes through the Keychain,
+# which re-prompts for a password after every auto-update changes the binary hash.
+# gzip: API JSON is several times smaller compressed, and a player's traffic is
+# the server's outbound bill. Pure Rust (flate2), unlike zstd, which needs a C build.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls-webpki-roots", "rustls-tls-native-roots", "charset", "http2", "gzip"] }
+futures = "0.3"
+# Minecraft clients find a server through its _minecraft._tcp SRV record; std resolves only A/AAAA.
+hickory-resolver = "0.25"
+dirs = "6"
+md-5 = "0.10"
+rfd = "0.15"
+sha1 = "0.10"
+sha2 = "0.10"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# level.dat is gzip-compressed NBT, and the world manager rewrites it on rename
+flate2 = "1"
+discord-rich-presence = "0.2"
+# secrets live in the local vault (secrets.rs): AES-256-GCM with an HKDF key
+aes-gcm = "0.10"
+hkdf = "0.12"
+# the fallback updater verifies artifacts with the same key and algorithm as the
+# updater plugin
+minisign-verify = "0.2"
+semver = "1"
+base64 = "0.22"
+url = "2"
+# game assets ship as ogg/vorbis, which WKWebView on macOS cannot play
+lewton = "0.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+tauri-plugin-global-shortcut = "2.3.2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI for vault.key: the file is useless outside the Windows account.
+# Shell/Registry: opening links without the shell's own error dialog, and
+# finding a browser when the https association is broken
+windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry"] }
+# The microphone prompt is WebView2's own dialog. The launcher already asked the
+# user in its settings, so the request is answered for our window instead of
+# being bounced back at them on every recording.
+webview2-com = "0.38"
+# Ярлыки «Рабочий стол»/«Пуск» с выбранной иконкой (IShellLinkW), см. src/app_icon.rs
+# Rewind (src/engine/rewind/win): Windows Graphics Capture of the game window,
+# GPU scaling to NV12, the hardware H.264 encoder and AAC through Media
+# Foundation, WASAPI process loopback. All in-box, so nothing extra ships.
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Foundation", "Media_Control", "Storage_Streams", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_Media_Audio", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_System_Ole", "Win32_System_WinRT", "Win32_System_WinRT_Direct3D11", "Win32_System_WinRT_Graphics", "Win32_System_WinRT_Graphics_Capture", "Win32_Security", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging"] }
+# VPN clients in "system proxy" mode (v2rayN, Hiddify, Clash) only set the
+# WinINet proxy. Without this feature the core went straight past it into the
+# resets the player turned the VPN on to avoid, while the browser worked.
+reqwest = { version = "0.12", default-features = false, features = ["system-proxy"] }
+# implement! for the WASAPI activation callback expands to paths in windows-core
+windows-core = "0.61"
+# Same registry values hyper-util reads, so the client is rebuilt when they change.
+windows-registry = "0.5"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# MPRIS for the in-game now-playing island; already in the tree through the
+# deep-link and single-instance plugins
+zbus = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+# Dock icon switching (NSApplication.setApplicationIconImage) and the bundle's own icon
+# (NSWorkspace.setIcon:forFile:), see src/app_icon.rs
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSBundle", "NSString"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+
+# The app crate is the critical path of a release build: with a single codegen
+# unit it compiles serially long after every dependency has finished.
+[profile.release.package.copper-launcher]
+codegen-units = 16
+
+# Local iteration profile. A separate named profile keeps its own target dir and
+# cache, so alternating with release builds does not rebuild the dependency tree.
+# The only difference from release is LTO, which dominates link time.
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+strip = "debuginfo"
+
+# dependencies come from cache anyway, so keep them fully optimized
+[profile.fast.package."*"]
+opt-level = 3
+codegen-units = 1
+incremental = false

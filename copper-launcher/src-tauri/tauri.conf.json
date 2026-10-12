@@ -1,0 +1,230 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Copper Launcher",
+  "version": "2.0.0",
+  "identifier": "io.copper.launcher",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "bun run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Copper Launcher",
+        "width": 1200,
+        "height": 760,
+        "minWidth": 980,
+        "minHeight": 640,
+        "decorations": false,
+        "transparent": false,
+        "center": true,
+        "acceptFirstMouse": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": [
+          "'self'"
+        ],
+        "script-src": [
+          "'self'"
+        ],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'"
+        ],
+        "font-src": [
+          "'self'",
+          "data:"
+        ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "https:",
+          "asset:",
+          "http://asset.localhost"
+        ],
+        "media-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "asset:",
+          "http://asset.localhost",
+          "https:"
+        ],
+        "connect-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "ipc:",
+          "http://ipc.localhost",
+          "asset:",
+          "http://asset.localhost",
+          "https://api.modrinth.com",
+          "https://cdn.modrinth.com"
+        ],
+        "worker-src": [
+          "'self'",
+          "blob:"
+        ],
+        "object-src": [
+          "'none'"
+        ],
+        "base-uri": [
+          "'self'"
+        ],
+        "form-action": [
+          "'none'"
+        ],
+        "frame-src": [
+          "'none'"
+        ],
+        "frame-ancestors": [
+          "'none'"
+        ]
+      },
+      "devCsp": {
+        "default-src": [
+          "'self'"
+        ],
+        "script-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173"
+        ],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173"
+        ],
+        "font-src": [
+          "'self'",
+          "data:",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173"
+        ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "https:",
+          "asset:",
+          "http://asset.localhost",
+          "http://127.0.0.1:5173"
+        ],
+        "media-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "asset:",
+          "http://asset.localhost",
+          "http://127.0.0.1:5173",
+          "https:"
+        ],
+        "connect-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "ipc:",
+          "http://ipc.localhost",
+          "asset:",
+          "http://asset.localhost",
+          "ws://127.0.0.1:5173",
+          "ws://localhost:5173",
+          "http://127.0.0.1:5173",
+          "http://localhost:5173",
+          "https://api.modrinth.com",
+          "https://cdn.modrinth.com"
+        ],
+        "worker-src": [
+          "'self'",
+          "blob:"
+        ],
+        "object-src": [
+          "'none'"
+        ],
+        "base-uri": [
+          "'self'"
+        ]
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "app",
+      "dmg",
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "publisher": "Copper contributors",
+    "copyright": "Based on Millida Launcher; GPL-3.0-only",
+    "category": "Game",
+    "shortDescription": "Copper Launcher — Minecraft instances",
+    "longDescription": "Independent Minecraft launcher with local instances, account management and Modrinth catalog.",
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-libav"
+        ]
+      },
+      "rpm": {
+        "compression": {
+          "type": "gzip",
+          "level": 1
+        }
+      }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "installerHooks": "installer-hooks.nsh",
+        "languages": [
+          "Russian",
+          "English"
+        ]
+      }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "copper"
+        ]
+      }
+    }
+  }
+}

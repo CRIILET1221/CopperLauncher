@@ -1,0 +1,80 @@
+.copper-nav { display:flex; justify-content:space-between; gap:12px; padding:14px 20px; position:relative; flex-shrink:0; }
+.copper-nav nav,.copper-nav-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.copper-home.on { display:flex; flex-direction:column; min-height:100%; padding:24px; background:radial-gradient(ellipse at 50% 30%,#33463d 0%,#17211e 65%); }
+.copper-stage { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:16px; padding:30px 0; }
+.copper-emblem { width:120px; height:120px; image-rendering:pixelated; filter:drop-shadow(0 14px 20px #0005); }
+.copper-stage h1 { font-size:32px; margin:0; color:#e7b28c; }
+.copper-stage p { margin:0; color:#bdc9c1; }
+.copper-launch { display:flex; flex-direction:column; align-items:center; gap:12px; width:min(100%,480px); margin:32px auto 8px; padding:22px; background:#161c19; border:2px solid #8b5d40; }
+.copper-launch select { width:100%; padding:12px; border:1px solid #765740; background:#252d28; color:#fff; font:inherit; }
+.copper-play { min-height:66px; width:100%; justify-content:center; font-size:26px; }
+.copper-catalog { padding:24px; }
+.copper-catalog form { display:flex; gap:12px; margin:20px 0; }
+.copper-catalog input { flex:1; min-width:0; padding:12px; background:#252d28; color:#fff; border:1px solid #765740; font:inherit; }
+.copper-results { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:16px; }
+.copper-result { display:flex; flex-direction:column; gap:12px; padding:18px; background:#1f2823; border:1px solid #465249; }
+.copper-result img { width:48px; height:48px; object-fit:contain; }
+.copper-result h2 { margin:0; font-size:20px; }
+.copper-result p { flex:1; margin:0; }
+@media(max-width:650px) { .copper-nav { flex-wrap:wrap; } .copper-stage h1 {font-size:25px;} .copper-home.on {padding:16px;} }
+
+:root:root .screen.copper-home { width:100%; max-width:none; margin:0; }
+.content:has(#s-play.on) { padding:0; overflow:auto; }
+
+/* Keep the stepped pixel outlines, with quieter surfaces and more breathing room. */
+:root:root {
+  --m-bg: #151b18;
+  --m-surface: #1c241f;
+  --m-surface-2: #27312a;
+  --m-inset: #171e1a;
+  --m-fg: #e5e9df;
+  --m-fg-muted: #adb9ad;
+  --m-fg-subtle: #9aa89d;
+}
+.copper-nav { padding:16px 24px; background:#1b231e; border-bottom:1px solid #344038; }
+.copper-nav nav,.copper-nav-actions { gap:12px; }
+:root:root .copper-nav .btn { min-height:44px; padding:10px 18px; font-size:14px; --px-ft-w:2px; --px-fb-w:3px; }
+:root:root .copper-nav .btn.primary { background-color:#354c3e; color:#e0ebd8; --px-on-accent:#e0ebd8; }
+:root:root .copper-nav .btn.primary svg { color:#c9dfb8; }
+.copper-home.on { background:radial-gradient(ellipse at 50% 28%,#2b4135 0%,#1a2921 42%,#151d18 85%); padding:28px; }
+.copper-stage { gap:18px; padding:32px 0; }
+.copper-emblem { width:104px; height:104px; filter:drop-shadow(0 12px 18px #0004); }
+.copper-stage h1 { font-size:30px; color:#e6b18b; letter-spacing:.4px; }
+.copper-stage p { font-size:14px; color:#aebdb1; line-height:1.6; }
+.copper-launch { width:min(100%,460px); margin:28px auto 12px; padding:24px; gap:16px; background:#1c2820; border:1px solid #52614e; box-shadow:0 8px 0 #101813,0 16px 30px #0003; clip-path:polygon(8px 0,calc(100% - 8px) 0,calc(100% - 8px) 8px,100% 8px,100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 8px),0 calc(100% - 8px),0 8px,8px 8px); }
+.copper-launch label { color:#c8d3c6; font-size:13px; letter-spacing:.6px; }
+.copper-launch p { margin:0; color:#b7c4b7; font-size:14px; line-height:1.6; text-align:center; }
+.copper-launch select { min-height:46px; background:#17211b; border-color:#586b57; padding:12px 14px; }
+:root:root .copper-play.btn.primary { min-height:60px; font-size:23px; background-color:#bcd49c; color:#182317; --px-on-accent:#182317; --px-ft-w:2px; --px-fb-w:4px; }
+:root:root .copper-play.btn.primary svg { color:#263d21; }
+.copper-launch select:focus-visible,.copper-catalog input:focus-visible { outline:2px solid #bfd49f; outline-offset:3px; }
+.copper-catalog { padding:28px; }
+.copper-results { gap:20px; }
+.copper-result { padding:22px; gap:14px; background:#202c23; border-color:#3b4b3e; }
+.copper-result p { color:#adbbaa; font-size:13px; line-height:1.65; }
+.copper-result h2 { font-size:18px; color:#e2e9db; }
+.page-head { gap:14px; margin-bottom:24px; }
+.build-grid { gap:20px; }
+.s2-plate { background:#202823; }
+.s2-cap { color:#9eae9e; letter-spacing:.8px; }
+.s2-row { padding-top:18px; padding-bottom:18px; }
+#nbModal .modal.nb2 { padding:28px; }
+.nb2-loaders { gap:12px; margin-bottom:22px; }
+.nb2-lt { height:108px; }
+.nb2-head { margin-bottom:24px; }
+#accModal .acc-opt { padding:16px; margin-bottom:12px; background:#1b241e; }
+#accModal .acc-opt-ic { background:#2e3a2e; }
+.modal h3 { margin-bottom:22px; }
+@media(max-width:650px) {
+  .copper-nav { padding:12px 16px; }
+  :root:root .copper-nav .btn { padding:9px 12px; font-size:13px; }
+  .copper-home.on,.copper-catalog { padding:20px 16px; }
+  .copper-stage { gap:14px; }
+  .copper-launch { padding:20px; }
+  #nbModal .modal.nb2 { padding:20px; }
+  .nb2-loaders { gap:6px; }
+}
+
+/* Quick start controls belong to the centered hero. */
+.copper-stage .copper-launch { margin: 6px 0; padding: 0; border: 0; box-shadow: none; background: transparent; clip-path: none; }
+#s-builds .bx-empty { min-height: 190px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:32px; }

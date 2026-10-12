@@ -1,0 +1,301 @@
+/* Party stage: figures live in the lobby's 3D scene, this layer only carries their
+   labels, the «+» seats and the member menus. Every seat is anchored at the point
+   above its head (or chest for a free seat) by a transform set each frame. */
+.party-overlay { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.party-seat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  --seat-h: 200px;
+}
+.party-seat > * { pointer-events: auto; }
+
+.seat-tag {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.seat-nick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 1px;
+  font: 800 15px/1 var(--m-font);
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55);
+  --px-n: 4px; clip-path: var(--px-4);
+}
+.seat-nick svg { width: 14px; height: 14px; flex: none; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55)); }
+.seat-nick .party-crown { color: var(--m-warning); }
+.seat-nick .party-mic { color: var(--m-accent); }
+.seat-nick .party-ready { color: var(--m-accent); }
+.party-seat.speaking .seat-nick { box-shadow: inset 0 -2px 0 var(--m-accent); }
+
+.party-hit {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  translate: -50% 0;
+  width: calc(var(--seat-h) * 0.42);
+  height: var(--seat-h);
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.party-add {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.32);
+  --px-n: 5px; clip-path: var(--px-5);
+  transition: background-color var(--m-t-fast), color var(--m-t-fast), transform 90ms var(--m-ease-smooth);
+}
+.party-add svg { width: 20px; height: 20px; }
+/* «+» on a figure, not a bare «+»: a lone plus read as nothing in particular. */
+.party-add .party-add-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 12px;
+  height: 12px;
+}
+.party-add-label {
+  position: absolute;
+  left: 0;
+  top: 30px;
+  /* Centre with transform and slide on margin-top, so the reveal state never
+     touches transform. The label used `translate: -50%` for centring and
+     `transform: none` to reveal, and on the macOS WebView that combination
+     dropped the centring — the search label sat to the right of the seat. */
+  transform: translateX(-50%);
+  font: 700 12px/1 var(--m-font);
+  color: #fff;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  margin-top: -3px;
+  transition: opacity var(--m-t-fast), margin-top var(--m-t-fast);
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .party-add:hover { color: var(--m-accent-fg); background-color: var(--m-accent); }
+  .party-add:hover + .party-add-label { opacity: 1; margin-top: 0; }
+}
+.party-add:active { transform: scale(0.96); }
+.party-add.open { color: var(--m-accent-fg); background-color: var(--m-accent); }
+.party-seat.searching .party-add { background-color: rgba(0, 0, 0, 0.45); }
+.party-seat.searching .party-add-label { opacity: 1; margin-top: 0; }
+/* A bare «+» read as nothing in particular: the single invite seat keeps its
+   label in view instead of revealing it on hover. */
+.party-seat.free .party-add-label { opacity: 1; margin-top: 0; }
+.party-dots { display: flex; gap: 4px; }
+.party-dots i { width: 5px; height: 5px; background: #fff; animation: party-dot 1.2s steps(2, jump-none) infinite; }
+.party-dots i:nth-child(2) { animation-delay: 0.2s; }
+.party-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes party-dot { 50% { opacity: 0.25; transform: translateY(-2px); } }
+.party-pop.seat { top: 30px; left: 30px; }
+.party-seat.flip .party-pop.seat { left: auto; right: 30px; }
+@media (prefers-reduced-motion: reduce) { .party-dots i { animation: none; } }
+
+.party-pop {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--seat-h) * 0.22);
+  left: calc(var(--seat-h) * 0.24);
+  display: flex;
+  flex-direction: column;
+  min-width: 208px;
+  padding: 6px;
+  background: var(--m-raised);
+  --px-n: 5px; clip-path: var(--px-5);
+  --px-ft: var(--px-plate-t); --px-fb: var(--px-plate-b);
+  animation: party-pop-in var(--m-t-fast) var(--m-ease-out, ease-out);
+}
+.party-seat.flip .party-pop { left: auto; right: calc(var(--seat-h) * 0.24); }
+@keyframes party-pop-in { from { opacity: 0; transform: translateX(-6px) scale(0.98); } }
+.party-seat.flip .party-pop { animation-name: party-pop-in-flip; }
+@keyframes party-pop-in-flip { from { opacity: 0; transform: translateX(6px) scale(0.98); } }
+.party-pop-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
+.party-pop-who { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.party-pop-who b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 700 14px/1.1 var(--m-font); color: var(--m-fg); }
+.party-pop-who span { font: 600 11px/1 var(--m-font); color: var(--m-fg-subtle); }
+.party-pop-who span.on { color: var(--m-accent); }
+.party-pop button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  font: 600 13px/1 var(--m-font);
+  color: var(--m-fg);
+  background: none;
+  text-align: left;
+  transition: background-color var(--m-t-fast);
+}
+.party-pop button svg { width: 14px; height: 14px; color: var(--m-fg-subtle); }
+.party-pop button.danger, .party-pop button.danger svg { color: var(--m-danger); }
+@media (hover: hover) and (pointer: fine) {
+  .party-pop button:hover { background-color: var(--m-surface-2); }
+}
+
+/* Incoming invite: a toast under the top bar, centred over the stage. */
+.party-invite {
+  position: absolute;
+  z-index: 7;
+  top: 124px;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 10px;
+  color: var(--m-fg);
+  background: var(--m-raised);
+  --px-n: 5px; clip-path: var(--px-5);
+  --px-ft: var(--px-plate-t); --px-ft-w: 2px; --px-fb: var(--px-plate-b); --px-fb-w: 3px;
+  animation: party-pop-in var(--m-t-base, 200ms) var(--m-ease-out, ease-out);
+}
+.party-invite-text { display: flex; flex-direction: column; gap: 3px; margin-right: 6px; }
+.party-invite-text b { font: 700 14px/1 var(--m-font); }
+.party-invite-text span { font: 600 12px/1 var(--m-font); color: var(--m-fg-subtle); }
+.party-invite-go, .party-invite-no {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  font: 700 13px/1 var(--m-font);
+  --px-n: 4px; clip-path: var(--px-4);
+  transition: background-color var(--m-t-fast), transform 90ms var(--m-ease-smooth);
+}
+.party-invite-go { color: var(--m-accent-fg); background: var(--m-accent); }
+.party-invite-no { width: 34px; padding: 0; justify-content: center; color: var(--m-fg-muted); background: var(--m-surface-2); }
+.party-invite-go svg, .party-invite-no svg { width: 14px; height: 14px; }
+.party-invite-go:active, .party-invite-no:active { transform: scale(0.97); }
+
+@media (min-width: 1800px) {
+  .seat-tag, .party-add, .party-pop, .party-invite { zoom: 1.3; }
+}
+@media (min-width: 2400px) {
+  .seat-tag, .party-add, .party-pop, .party-invite { zoom: 1.6; }
+}
+
+/* «Выйти из пати» под кнопкой «Готов/Играть»: тихая, не спорит с главной
+   кнопкой, в ряду действий, где человек и ищет выход. Рендерится только когда
+   в пати есть другие игроки. */
+.lobby-row .play-col .party-leave {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  font: 700 13px/1 var(--m-font);
+  color: var(--m-fg-muted);
+  background: var(--m-surface-2);
+  --px-n: 5px; clip-path: var(--px-5);
+  transition: color var(--m-t-fast), background-color var(--m-t-fast), transform 90ms var(--m-ease-smooth);
+}
+.lobby-row .play-col .party-leave svg { width: 14px; height: 14px; }
+@media (hover: hover) and (pointer: fine) {
+  .lobby-row .play-col .party-leave:hover { color: var(--m-danger); background-color: var(--m-surface); }
+}
+.lobby-row .play-col .party-leave:active { transform: translateY(1px); }
+
+/* Party windows reuse the group window; only the pieces that are new live here. */
+.party-tabs { display: flex; width: 100%; }
+.party-tabs .seg { flex: 1 1 0; justify-content: center; gap: 6px; }
+.party-tabs .seg svg { width: 14px; height: 14px; }
+.party-badge { min-width: 18px; height: 18px; padding: 0 5px; font: 800 11px/18px var(--m-font); color: var(--m-accent-fg); background: var(--m-accent); }
+.party-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--m-surface); --px-n: 4px; clip-path: var(--px-4); }
+.party-row-who { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-width: 0; }
+.party-row-who b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 700 14px/1.1 var(--m-font); color: var(--m-fg); }
+.party-row-who span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 600 12px/1 var(--m-font); color: var(--m-fg-subtle); }
+.party-row-size { display: inline-flex; align-items: center; gap: 4px; font: 700 12px/1 var(--m-font); color: var(--m-fg-muted); }
+.party-row-size svg { width: 12px; height: 12px; }
+.party-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  color: var(--m-fg);
+  background: var(--m-surface);
+  --px-n: 4px; clip-path: var(--px-4);
+  transition: background-color var(--m-t-fast);
+}
+@media (hover: hover) and (pointer: fine) {
+  .party-open:hover:not(:disabled) { background-color: var(--m-surface-2); }
+}
+.party-open-text { display: flex; flex-direction: column; gap: 4px; }
+.party-open-text b { font: 700 14px/1.1 var(--m-font); }
+.party-open-text span { font: 600 12px/1 var(--m-font); color: var(--m-fg-subtle); }
+.party-find, .party-wide { width: 100%; min-height: 40px; justify-content: center; }
+.party-code-row { display: flex; gap: 8px; }
+.party-code-row .input { flex: 1 1 auto; }
+.party-my-code b { font: 800 14px/1 var(--m-mono); letter-spacing: 0.06em; }
+.party-modal.lfg { width: min(560px, 100%); }
+.party-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.party-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  font: 600 12px/1 var(--m-font);
+  color: var(--m-fg-muted);
+  background: var(--m-surface-2);
+  --px-n: 4px; clip-path: var(--px-4);
+}
+.party-tag svg { width: 12px; height: 12px; }
+.party-tag.pick { cursor: pointer; transition: background-color var(--m-t-fast), color var(--m-t-fast), transform 90ms var(--m-ease-smooth); }
+.party-tag.pick.on { color: var(--m-accent-fg); background-color: var(--m-accent); }
+@media (hover: hover) and (pointer: fine) {
+  .party-tag.pick:hover:not(.on):not(:disabled) { color: var(--m-fg); }
+}
+.party-tag.pick:active { transform: scale(0.96); }
+.party-ver { width: 96px; }
+
+.party-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--m-surface);
+  --px-n: 5px; clip-path: var(--px-5);
+  --px-ft: var(--px-plate-t); --px-ft-w: 2px; --px-fb: var(--px-plate-b); --px-fb-w: 3px;
+}
+.party-card-head { display: flex; align-items: center; gap: 8px; }
+.party-card-head b { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 700 13px/1.1 var(--m-font); color: var(--m-fg); }
+.party-card .meta, .party-code .meta, .party-mod .meta { font-size: 12px; color: var(--m-fg-subtle); }
+
+.party-code { display: flex; align-items: center; gap: 10px; }
+.party-code b { font: 800 20px/1 var(--m-mono); letter-spacing: 0.08em; color: var(--m-fg); }
+.party-size { display: flex; align-items: center; gap: 10px; }
+.party-size b { min-width: 24px; text-align: center; font: 800 16px/1 var(--m-font); color: var(--m-fg); }
+
+.party-mods { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.party-mod { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 8px; background: var(--m-inset); }
+.party-mod-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 600 12px/1.2 var(--m-mono); color: var(--m-fg); }
+.party-mod.bad .party-mod-name { color: var(--m-danger); text-decoration: line-through; }
+

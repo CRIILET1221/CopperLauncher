@@ -1,0 +1,946 @@
+/* ============================================================
+   COPPER КАТАЛОГ — общий компонент (лаунчер + хостинг), 22.09.2026.
+   Форма строки и пустых состояний живёт в catalog.css; здесь только то,
+   что появилось вместе с общим каркасом: ряд разделов, поиск без шапки
+   экрана и каталог внутри карточки хостинга.
+   ============================================================ */
+
+.cat2-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.cat2-bar .cat2-tabs { flex: 1 1 auto; }
+.cat2-bar .cat2-search { flex: 0 1 240px; min-width: 160px; }
+
+/* Каталог внутри карточки хостинга теснее: карточка уже сама даёт поля. */
+.cat2-tabs.compact .seg { height: 30px; font-size: 12px; }
+.cat2-tabs.compact .seg svg { width: 14px; height: 14px; }
+
+/* Строка, которая открывает карточку, ведёт себя как ссылка. */
+.mod-row.cat2-open { cursor: pointer; }
+
+/* Каталог хостинга стоит в карточке — свои поля ему не нужны. */
+.cat2-host .cat2-bar { margin-bottom: 12px; }
+.cat2-host .mods-filters { margin-bottom: 10px; }
+.card.cat2-host .mod-row { padding: 10px 12px; gap: 12px; background: var(--m-inset); }
+.card.cat2-host .mod-icon { width: 44px; height: 44px; }
+.cat2-host .cat-empty { padding: 28px 16px 24px; }
+
+/* Ядро, на котором сервер работает сейчас. */
+.cat2-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 10px;
+  height: 26px;
+  background: var(--m-accent-soft);
+  color: var(--m-accent);
+  border-radius: 13px;
+}
+.cat2-now svg { width: 13px; height: 13px; }
+:root:root .cat2-now { border-radius: 0; --px-n: 4px; clip-path: var(--px-4); }
+
+@media (max-width: 900px) {
+  .cat2-bar .cat2-search { flex: 1 1 100%; }
+}
+
+/* ============================================================
+   ПЛИТКИ КАТАЛОГА (24.09.2026): обложка 16:9, название, одна строка
+   и два действия. Рамка — от .card (слои рамки в 12-pixel.css).
+   ============================================================ */
+
+.cat3-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 12px;
+}
+
+.card.cat3-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  background-color: var(--m-surface);
+  transition: background-color 140ms var(--m-ease-move, ease);
+}
+.card.cat3-card:hover { background-color: var(--m-surface-2); }
+.card.cat3-card.cat-skel { cursor: default; }
+
+.cat3-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  color: var(--m-fg-subtle);
+  background: var(--m-inset);
+}
+.cat3-art > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 180ms var(--m-ease-move, ease);
+}
+.cat3-card:hover .cat3-art > img:not(.cat3-art-ic) { transform: scale(1.05); }
+.cat3-art > svg { width: 36px; height: 36px; }
+
+/* Обложки нет — пиксельная мозаика из самой иконки и иконка поверх. */
+.cat3-art.is-icon > .cat3-art-bg {
+  image-rendering: pixelated;
+  opacity: 0.32;
+  transform: scale(1.6);
+}
+.cat3-card:hover .cat3-art.is-icon > .cat3-art-bg { transform: scale(1.7); }
+.cat3-art.is-icon > .cat3-art-ic {
+  position: relative;
+  inset: auto;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  --px-n: 5px;
+  clip-path: var(--px-5);
+}
+
+.cat3-on {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: #06200e;
+  background: var(--m-accent);
+  --px-n: 4px;
+  clip-path: var(--px-4);
+}
+.cat3-on svg { width: 15px; height: 15px; }
+
+.cat3-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px 0;
+}
+.cat3-body b {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cat3-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--m-fg-subtle);
+}
+.cat3-dl { display: inline-flex; align-items: center; gap: 4px; }
+.cat3-dl svg { width: 12px; height: 12px; }
+.cat3-card.cat-skel .cat3-body { gap: 8px; padding-bottom: 14px; }
+
+.cat3-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 12px 12px;
+}
+.cat3-acts .btn { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.cat3-acts .btn svg { width: 12px; height: 12px; }
+.cat3-acts .btn.done { background-color: var(--m-accent-soft); color: var(--m-accent); }
+
+/* «Для: сборка · версия · загрузчик» — клик меняет сборку. */
+.cat3-for {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.mk-pill.cat3-for-btn { gap: 8px; max-width: 100%; }
+.cat3-for-btn .cat3-for-lab { color: var(--m-fg-subtle); }
+.cat3-for-btn b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cat3-for-btn svg:last-child { width: 12px; height: 12px; color: var(--m-fg-subtle); }
+
+/* Поле ИИ-помощника над разделами. */
+.input.cat3-ask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  margin-bottom: 12px;
+  padding: 0 6px 0 14px;
+}
+.cat3-ask input { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+.cat3-ask .cat3-ask-ic { flex: none; width: 18px; height: 18px; }
+.cat3-ask .btn { flex: none; }
+.cat3-ask .btn svg { width: 12px; height: 12px; }
+
+/* Переключатель вида рядом с сортировкой. */
+.segs.cat3-view { flex: none; }
+.segs.cat3-view .seg { width: 36px; padding: 0; justify-content: center; }
+.segs.cat3-view .seg svg { width: 14px; height: 14px; margin: 0; }
+
+@media (max-width: 520px) {
+  .cat3-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat3-acts { flex-direction: column; }
+}
+
+/* Цена платной сборки на обложке — плотная золотая плашка, как в хабе. */
+.cat3-price {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 6px 10px;
+  font: 800 14px/1 var(--m-font);
+  color: var(--ph-on-gold, #2a1d00);
+  background: var(--ph-gold, #f2b705);
+  --px-n: 4px;
+  clip-path: var(--px-4);
+}
+
+/* ============================================================
+   КАТАЛОГ COPPER = КАТАЛОГ COPPER.NET (24.09.2026, приказ владельца
+   «возьми прямо с сайта»). Перенос `mk-mr-*`, `mk-galcard`, `mk-hub-cat`
+   из copper-kit.css сайта: те же размеры, шаги и цвета. Рамки и срезы —
+   кит лаунчера (.card, .seg, .btn, .input дают ступенчатую рамку из
+   12-pixel.css), здесь только раскладка и содержимое.
+   ============================================================ */
+
+/* Цвета загрузчиков — как на сайте. */
+.mr-cat, .mr-cats, .hub-cat {
+  --m-ld-forge: #9aa3f5; --m-ld-fabric: #d7b99a; --m-ld-neoforge: #f3a06f; --m-ld-quilt: #c99af5;
+  --m-ld-legacy-fabric: #d7b99a; --m-ld-ornithe: #9fc7e8; --m-ld-liteloader: #7fb2f0; --m-ld-paper: #f09a9a;
+  --m-ld-folia: #8fce74; --m-ld-spigot: #f0a24a; --m-ld-bukkit: #f09474; --m-ld-purpur: #b49af0;
+  --m-ld-sponge: #e8c05a; --m-ld-velocity: #6fc6de; --m-ld-bungeecord: #e8d27a; --m-ld-waterfall: #86a8f0;
+  --m-ld-datapack: #9ed8a4; --m-ld-java-agent: #e3a8cf; --m-ld-optifine: #e3a8cf; --m-ld-iris: #8aa6ff;
+  --m-ld-vanilla: var(--m-fg-muted);
+}
+
+/* Значок Modrinth маской цветом текста. */
+.mri {
+  display: inline-block;
+  flex: none;
+  background: currentColor;
+  -webkit-mask: var(--mri) center / contain no-repeat;
+  mask: var(--mri) center / contain no-repeat;
+}
+.mr-svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── Вкладки разделов (mk-mr-types) ── */
+.segs.mr-types { gap: 4px; margin-bottom: 16px; }
+.mr-types .seg { height: 36px; padding: 0 12px; font-size: 14px; font-weight: 700; color: var(--m-fg-muted); background-color: transparent; }
+.mr-types .seg:hover { color: var(--m-fg); background-color: var(--m-surface-2); }
+:root:root .mr-types .seg.on {
+  color: var(--px-on-accent);
+  background-color: var(--m-accent);
+  --px-ft: var(--px-btn-t); --px-ft-w: 2px; --px-fb: var(--px-btn-b); --px-fb-w: 3px;
+}
+
+/* ── Раскладка: колонка фильтров 280 + лента (mk-mr-layout) ── */
+.mr-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (min-width: 1024px) {
+  .mr-layout { grid-template-columns: 260px minmax(0, 1fr); }
+  /*
+   * Фильтры листаются отдельно от ленты (правка владельца 24.09.2026, 16:39):
+   * колонка прилипает к верху прокрутки и сама не длиннее окна, а у «Версий»,
+   * «Загрузчиков» и «Категорий» своя прокрутка. 100px — шапка окна над
+   * областью прокрутки `.content` (замер 24.09: top 100 при любой ширине),
+   * по 12px воздуха сверху и снизу. Только sticky + max-height + overflow —
+   * WKWebView держит это без префиксов.
+   */
+  .mr-aside {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - var(--mr-aside-off, 124px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--m-surface-2) transparent;
+    padding-bottom: 4px;
+  }
+  .mr-aside::-webkit-scrollbar { width: 6px; }
+  .mr-aside::-webkit-scrollbar-thumb { background: var(--m-surface-2); }
+  .mr-aside::-webkit-scrollbar-track { background: transparent; }
+}
+.mr-main { min-width: 0; }
+.mr-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 16px; }
+.mr-h1 { margin: 0; font: 700 28px/1.15 var(--m-font); letter-spacing: -0.02em; color: var(--m-fg); }
+.mr-h1-n { margin-left: 12px; font: 600 15px/1 var(--m-font); letter-spacing: 0; color: var(--m-fg-subtle, rgba(255,255,255,.5)); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mr-head .cat3-for { margin: 0; }
+
+.mr-toolbar { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+.mr-toolbar .mr-search { flex: 1 1 auto; min-width: 0; height: 48px; }
+.mr-toolbar-row { display: flex; align-items: center; gap: 12px; flex: none; }
+.mr-count { font-size: 14px; font-weight: 600; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mr-search input[type='search']::-webkit-search-cancel-button { display: none; }
+.mr-search-clear { display: grid; place-items: center; width: 28px; height: 28px; color: var(--m-fg-subtle); background: none; border: 0; cursor: pointer; }
+.mr-search-clear:hover { color: var(--m-fg); }
+@media (max-width: 767px) {
+  .mr-toolbar { flex-direction: column; align-items: stretch; }
+  .mr-toolbar-row .mr-count { margin-right: auto; }
+}
+
+/* Сортировка «Популярные | Новые»: выбранная — плотный акцент, как на сайте. */
+.segs.mr-sort { gap: 4px; flex-wrap: nowrap; }
+.mr-sort .seg { height: 40px; padding: 0 12px; font-size: 13px; font-weight: 700; background-color: transparent; color: var(--m-fg); }
+:root:root .mr-sort .seg.on { color: var(--px-on-accent); background-color: var(--m-accent); --px-ft: var(--px-btn-t); --px-fb: var(--px-btn-b); }
+
+.btn.mr-fbtn { gap: 8px; }
+.mr-fbtn-n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; font-size: 12px; font-weight: 800; color: var(--px-on-accent); background: var(--m-accent); --px-n: 4px; clip-path: var(--px-4); }
+.mr-sheet { margin: 0 0 16px; }
+.mr-sheet .mr-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
+
+/* ── Фильтры (mk-mr-group / mk-mr-opt) ── */
+.mr-filters { display: flex; flex-direction: column; gap: 8px; }
+.card.mr-group { padding: 4px 8px 8px; background-color: var(--m-surface); }
+.mr-group-head {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; height: 44px; padding: 0 8px;
+  font: 700 15px/1 var(--m-font); color: var(--m-fg); background: none; border: 0; cursor: pointer; text-align: left;
+}
+.mr-group-head svg { width: 14px; height: 14px; color: var(--m-fg-subtle); transition: transform var(--m-t-fast) ease; }
+.mr-group.is-open .mr-group-head svg { transform: rotate(180deg); }
+.mr-opts { display: flex; flex-direction: column; }
+.mr-opt {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 8px;
+  font: 600 14px/1 var(--m-font); color: var(--m-fg-muted); text-align: left; background: transparent; border: 0; cursor: pointer;
+  --px-n: 5px; clip-path: var(--px-5);
+  transition: background-color var(--m-t-fast) ease, color var(--m-t-fast) ease;
+}
+.mr-opt:hover { background: var(--m-surface-2); color: var(--m-fg); }
+.mr-opt.is-on { color: var(--m-fg); }
+.mr-opt-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mr-opt-ic { display: inline-flex; flex: none; color: var(--m-fg-muted); }
+.mr-opt.is-on .mr-opt-ic { color: var(--m-fg); }
+.mr-opt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-opt-cnt { font-size: 12px; font-weight: 600; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+/* Пиксельная галочка: квадрат без среза (рамка по прямоугольнику не рвётся), у выбранной — заливка и тёмный квадрат внутри. */
+.mr-check { position: relative; width: 16px; height: 16px; background: var(--m-surface-2); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--m-fg) 26%, transparent); }
+.mr-opt:hover .mr-check:not(.is-on) { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--m-fg) 45%, transparent); }
+.mr-check.is-on { background: var(--m-accent); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28); }
+.mr-check.is-on::after { content: ''; position: absolute; inset: 5px; background: var(--px-on-accent); }
+.mr-more-btn { display: flex; align-items: center; justify-content: flex-end; height: 36px; padding: 0 8px; font: 700 13px/1 var(--m-font); color: var(--m-accent); background: none; border: 0; cursor: pointer; }
+.mr-reset { display: flex; align-items: center; height: 40px; padding: 0 12px; font: 700 14px/1 var(--m-font); color: var(--m-accent); background: var(--m-surface); border: 0; cursor: pointer; --px-n: 5px; clip-path: var(--px-5); }
+@media (max-width: 1023px) { .mr-opt, .mr-more-btn { height: 44px; } }
+
+/* ── Панель-ключи (как mk-fbox сайта, 30.09.2026): всё в одной коробке, чипы со счётчиками ── */
+.card.mr-fbox { display: flex; flex-direction: column; gap: 12px; padding: 12px; background-color: var(--m-surface); }
+.mr-sheet .mr-filters.mr-fbox { display: flex; }
+.mr-fsec { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mr-fsec-t { font: 600 12px/16px var(--m-font); color: var(--m-fg-subtle); }
+.mr-keys { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.seg.mr-key { display: inline-flex; align-items: center; gap: 6px; height: 30px; min-width: 0; max-width: 100%; padding: 0 9px; font: 600 13px/1 var(--m-font); white-space: nowrap; color: var(--m-fg-muted); background-color: var(--m-surface-2); }
+.seg.mr-key:hover { color: var(--m-fg); }
+:root:root .seg.mr-key.on { color: var(--px-on-accent); background-color: var(--m-accent); --px-ft: var(--px-btn-t); --px-fb: var(--px-btn-b); }
+.mr-key-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mr-key-ic { display: inline-flex; flex: none; }
+.mr-key-n { flex: none; font: 600 11px/1 var(--m-font); color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.seg.mr-key.on .mr-key-n { color: inherit; opacity: 0.72; }
+.seg.mr-key svg { width: 14px; height: 14px; flex: none; }
+.seg.mr-more { color: var(--m-accent); }
+.seg.mr-more-close { margin-top: 6px; }
+.seg.mr-more-close svg { transform: rotate(180deg); }
+.mr-pick { display: flex; flex-direction: column; gap: 8px; }
+.seg.mr-pick-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: 36px; padding: 0 12px; font: 700 14px/1 var(--m-font); color: var(--m-fg); background-color: var(--m-surface-2); }
+.mr-pick-v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-pick-v.is-empty { color: var(--m-fg-muted); font-weight: 600; }
+.mr-pick-l { font-weight: 500; color: var(--m-fg-subtle); }
+.seg.mr-pick-btn svg { width: 16px; height: 16px; flex: none; color: var(--m-fg-subtle); transition: transform var(--m-t-fast) ease; }
+.seg.mr-pick-btn.is-open svg { transform: rotate(180deg); }
+.mr-pick-pop { display: flex; flex-direction: column; gap: 6px; }
+.seg.mr-key.mr-key-wide { width: 100%; height: 32px; }
+.mr-pick-q { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; color: var(--m-fg-subtle); background: var(--m-bg, var(--m-surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m-fg) 14%, transparent); }
+.mr-pick-q svg { width: 16px; height: 16px; flex: none; }
+.mr-pick-q input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; box-shadow: none; color: var(--m-fg); font: 500 14px/1 var(--m-font); }
+.mr-pick-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; max-height: min(300px, 40vh); padding-right: 4px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.mr-pick-list > .seg.mr-key { justify-content: space-between; }
+.mr-pick-none { grid-column: 1 / -1; padding: 8px 0; font: 500 13px/1.3 var(--m-font); color: var(--m-fg-subtle); }
+.mr-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.mr-quick > .seg.mr-key { justify-content: center; height: 28px; padding: 0 4px; font-size: 12px; }
+.mr-fbox > .mr-reset { align-self: flex-start; height: 20px; padding: 0; font-size: 13px; background: none; clip-path: none; }
+@media (max-width: 1023px) { .seg.mr-key { height: 40px; padding: 0 12px; font-size: 14px; } .seg.mr-pick-btn { height: 44px; } .mr-quick > .seg.mr-key { height: 40px; } }
+
+/* ── Лента строками (mk-mr-row) ── */
+.mr-list { display: flex; flex-direction: column; gap: 8px; }
+.card.mr-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 16px;
+  background-color: var(--m-surface);
+  cursor: pointer;
+  transition: background-color var(--m-t-fast) ease;
+}
+.card.mr-row:hover { background-color: color-mix(in srgb, var(--m-surface-2) 70%, var(--m-surface)); }
+.card.mr-row.cat-skel { cursor: default; }
+.mr-icon { position: relative; display: block; width: 96px; height: 96px; overflow: hidden; background: var(--m-surface-2); --px-n: 5px; clip-path: var(--px-5); }
+.mr-icon > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mr-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mr-titleline { display: flex; align-items: baseline; gap: 8px; min-width: 0; height: 24px; }
+.mr-title { margin: 0; min-width: 0; flex: 0 1 auto; font: 700 18px/24px var(--m-font); letter-spacing: -0.01em; color: var(--m-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-by { flex: 0 1 auto; min-width: 0; font-size: 14px; font-weight: 500; color: var(--m-fg-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-desc { margin: 0; height: 40px; font-size: 14px; line-height: 20px; color: var(--m-fg-muted); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mr-tags { display: flex; align-items: center; gap: 4px 16px; height: 24px; margin: 4px 0 0; padding: 0; list-style: none; overflow: hidden; flex-wrap: wrap; }
+.mr-tag { display: inline-flex; align-items: center; gap: 4px; height: 24px; font-size: 13px; font-weight: 600; color: var(--m-fg-subtle); white-space: nowrap; }
+.mr-tag svg { width: 14px; height: 14px; }
+.mr-tag.is-accent { color: var(--m-accent); }
+.mr-tag.has-tone { color: var(--mk-tone); }
+/* «Милли» — маскот вместо плашки значка (сборку собрала Милли, 30.09.2026). */
+.mr-tag.is-bare { gap: 5px; }
+.mr-tag.is-bare .milli, .mr-tag.is-bare .milli svg { width: 18px; height: 18px; }
+/* Платная сборка: золотая плашка «Премиум» у названия и цена над кнопкой.
+   Золото — тёплый токен кита (--m-warning), как у премиума в «Во что играем». */
+.mr-prem {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; align-self: center; height: 22px; padding: 0 7px;
+  font: 800 11.5px/1 var(--m-font); color: #241600; background: var(--m-warning);
+  --px-n: 4px; clip-path: var(--px-4);
+}
+.mr-prem svg { width: 12px; height: 12px; }
+.mr-prem.excl { color: var(--m-accent-fg); background: var(--m-rarity-epic); }
+.mr-price { font: 800 18px/1 var(--m-font); color: var(--m-warning); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Куплено: плотная плашка акцента с тёмным текстом вместо цены. */
+.mr-owned {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
+  font: 800 12px/1 var(--m-font); color: var(--m-accent-fg); background: var(--m-accent);
+  --px-n: 4px; clip-path: var(--px-4); white-space: nowrap;
+}
+.mr-gal-stat .mr-price { font-size: 14px; }
+.mr-gal-stat .mr-owned { height: 20px; font-size: 11px; }
+.mr-buy[aria-busy='true'] { opacity: .7; }
+
+/* Окно покупки материала: цена крупно, баланс в колодце, две кнопки. */
+.cat-buy-bg { position: fixed; z-index: 900; }
+.cat-buy h3 { overflow-wrap: anywhere; }
+.cat-buy-price { margin-top: 10px; font: 800 28px/1 var(--m-font); color: var(--m-warning); font-variant-numeric: tabular-nums; }
+.cat-buy-line { margin: 6px 0 0; }
+.cat-buy-line.is-warn { color: var(--m-warning); }
+.cat-buy-wallet {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; padding: 10px 12px;
+  font-size: 13px; color: var(--m-fg-muted); background: var(--m-inset); --px-n: 5px; clip-path: var(--px-5);
+}
+.cat-buy-wallet b { color: var(--m-fg); font-variant-numeric: tabular-nums; }
+.cat-buy[data-step='funds'] .cat-buy-wallet b { color: var(--m-danger); }
+.cat-buy-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.mr-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 128px; text-align: right; }
+.mr-stat { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--m-fg-muted); }
+.mr-stat svg { width: 16px; height: 16px; }
+.mr-stat b { font-size: 16px; font-weight: 700; color: var(--m-fg); font-variant-numeric: tabular-nums; }
+.mr-upd { font-size: 13px; font-weight: 500; color: var(--m-fg-subtle); white-space: nowrap; }
+.mr-actions { display: flex; align-items: flex-start; gap: 8px; margin-top: auto; }
+.mr-actions .btn { white-space: nowrap; }
+.mr-actions .btn svg { width: 12px; height: 12px; }
+.mr-actions .btn.done { background-color: var(--m-accent-soft); color: var(--m-accent); }
+/* Заглушка логотипа: цвет раздела, пиксельные квадраты, первая буква. */
+.mr-fallback {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background-color: color-mix(in srgb, var(--mr-fb, var(--m-accent)) 30%, var(--m-surface-2));
+  background-image: var(--px-dots);
+}
+.mr-fallback > img { width: 46%; max-width: 120px; aspect-ratio: 1; object-fit: contain; }
+@media (max-width: 639px) {
+  .card.mr-row { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 12px; }
+  .mr-icon { width: 64px; height: 64px; }
+  .mr-side { grid-column: 1 / -1; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; text-align: left; }
+  .mr-actions { margin: 0 0 0 auto; }
+}
+
+/* ── Лента карточками: шейдеры и ресурс-паки (mk-galcard) ── */
+/* Плотность (владелец 30.09.2026): не меньше трёх плиток в ряд в неполном
+   окне. Лента при окне 1024 — ~700px: 3 × 210 + зазоры; при 1280 — 4, при
+   1440 — 5. Минимум 200px держит название, скачивания и одну кнопку. */
+/* Лента каталога: не больше четырёх карточек в ряд и не меньше трёх
+   (владелец 30.09.2026: «при окне 1024 — три, дальше четыре, карточки растут
+   в ширину»). Автозаполнение давало пять на 1440 и шесть на 1728 — обложки
+   мельчали до значков. Четыре с 1200: там колонка ленты ~880 px, карточка
+   ~210 px; уже — три. Телефонная ширина ниже — две (520). */
+.mr-galgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1199px) { .mr-galgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .mr-galgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } }
+.mr-cheat-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 12px; font-size: 13px; line-height: 1.5; color: var(--m-fg-muted); }
+.mr-cheat-note .icon { flex-shrink: 0; margin-top: 2px; color: var(--m-warning); }
+.card.mr-gal { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden; background-color: var(--m-surface); cursor: pointer; transition: background-color var(--m-t-fast) ease; }
+.card.mr-gal:hover { background-color: var(--m-surface-2); }
+.card.mr-gal.cat-skel { cursor: default; }
+.mr-gal-cover { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--m-surface-2); }
+.mr-gal-cover > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform var(--m-t-base) var(--m-ease-out, ease); }
+.card.mr-gal:hover .mr-gal-cover > img { transform: scale(1.035); }
+.mr-gal-cover > .ph-card-tag { top: 6px; left: 6px; height: 20px; padding: 0 6px; font-size: 10.5px; }
+.mr-gal-cover > .ph-card-tag.prem { color: #241600; background: var(--m-warning); }
+.mr-gal-cover > .ph-card-tag.excl { color: var(--m-accent-fg); background: var(--m-rarity-epic); }
+.mr-gal-body { position: relative; display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; padding: 8px 10px 10px 60px; }
+.mr-gal-icon { position: absolute; left: 10px; top: -18px; z-index: 2; width: 42px; height: 42px; overflow: hidden; background: var(--m-surface-2); --px-n: 4px; clip-path: var(--px-4); }
+.mr-gal-icon > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mr-gal-title { margin: 0; font: 700 14px/19px var(--m-font); color: var(--m-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mr-gal-author { font-size: 12px; line-height: 15px; color: var(--m-fg-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mr-gal-summary { margin: 6px 0 0 -50px; font-size: 12.5px; line-height: 17px; color: var(--m-fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mr-tags.mr-gal-tags { margin: 2px 0 0 -50px; gap: 2px 10px; height: 22px; }
+.mr-gal-tags .mr-tag { height: 22px; font-size: 12px; }
+.mr-gal-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: auto 0 0 -50px; padding-top: 8px; }
+.mr-gal-stat { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--m-fg-subtle); white-space: nowrap; overflow: hidden; }
+.mr-gal-stat svg { width: 13px; height: 13px; flex: none; }
+.mr-gal-stat b { font-weight: 700; color: var(--m-fg); font-variant-numeric: tabular-nums; }
+.mr-gal-foot .mr-actions { margin: 0; flex: none; }
+.mr-gal-foot .mr-actions .btn { height: 30px; padding: 0 10px; font-size: 12.5px; }
+
+.mr-more { display: flex; justify-content: center; margin-top: 16px; }
+.mr-src-divider { display: flex; align-items: center; gap: 12px; margin: 16px 0 8px; font: 600 13px/1 var(--m-font); color: var(--m-fg-subtle); }
+.mr-src-divider::before, .mr-src-divider::after { content: ''; flex: 1; height: 2px; background: var(--m-surface-2); }
+.mr-more .btn { width: 100%; }
+
+/* ── Главная каталога: «Категории» (mk-hub-cat) ──
+   Шесть разделов: «Моды» и «Сборки» — в два ряда, как «Моды» на сайте,
+   четыре остальных — плитками справа; ниже 1000px — три в ряд. */
+.mr-cats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 132px; gap: 12px; }
+.mr-cats > .is-mods, .mr-cats > .is-modpacks { grid-row: span 2; }
+@media (max-width: 999px) {
+  .mr-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 120px; }
+  .mr-cats > .is-mods, .mr-cats > .is-modpacks { grid-row: auto; }
+}
+.card.mr-cat-tile {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px;
+  color: var(--m-fg); text-align: left; background-color: var(--m-surface); border: 0; overflow: hidden; cursor: pointer;
+  transition: background-color var(--m-t-fast) ease;
+}
+.card.mr-cat-tile:hover { background-color: var(--m-surface-2); }
+.mr-cat-head { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 8px; }
+.mr-cat-head b { font: 700 17px/1.2 var(--m-font); letter-spacing: -0.01em; }
+.mr-cat-head svg { width: 15px; height: 15px; transition: transform var(--m-t-base) var(--m-ease-out, ease); }
+.mr-cat-count { position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.mr-cat-skel { width: 90px; height: 10px; }
+.mr-cat-art {
+  position: absolute; right: 0; bottom: 0; width: 60%; max-width: 220px; height: 88%;
+  object-fit: contain; object-position: right bottom; pointer-events: none;
+  transition: transform var(--m-t-base) var(--m-ease-out, ease);
+}
+.mr-cats > .is-mods .mr-cat-art, .mr-cats > .is-modpacks .mr-cat-art { width: 80%; max-width: 300px; height: 82%; }
+.card.mr-cat-tile:hover .mr-cat-art { transform: scale(1.06) translateY(-2px); }
+.card.mr-cat-tile:hover .mr-cat-head svg { transform: translateX(3px); }
+
+
+
+/* ── Каталог в панели сервера (24.09.2026, 18:35): тот же SiteCatalog ──
+   Раздел без своих вкладок (ядра) — ряд вкладок не рисуем. Кнопка «На сервер»
+   в «Ресурсах» стоит первой в ряду кнопок строки. */
+.cat2-tabs:empty { display: none; }
+.cat2-legacy { margin-top: 16px; }
+.mr-cat.is-server .mr-types { margin-bottom: 4px; }
+.mr-host-portal { display: contents; }
+
+/* ── Разделы как на сайте (30.09.2026) ─────────────────────────────
+   Группы шапки каталога сайта и их разделы: цветной пиксельный значок,
+   нейтральный текст пункта. Цвета — токены --m-sec-* сайта (copper-kit.css),
+   та же шкала читаемости ≥4,5:1 на тёмном фоне. */
+.mr-cat, .hub-cat, .hub-cats, .fy-grid {
+  --m-sec-all: #b8c2cc; --m-sec-mods: #8fce74; --m-sec-modpacks: #c99af5; --m-sec-server-packs: #86a8f0;
+  --m-sec-plugins: #6fc6de; --m-sec-data-packs: #e8c05a; --m-sec-addons: #5fd4c0; --m-sec-cheats: #f09474;
+  --m-sec-texture-packs: #f3a06f; --m-sec-shaders: #f5c542; --m-sec-maps: #7fb2f0; --m-sec-seeds: #9ed8a4;
+  --m-sec-skins: #e3a8cf; --m-sec-capes: #b49af0; --m-sec-heads: #f09a9a;
+}
+.mr-sec-ic { display: inline-flex; flex: none; margin-right: 6px; }
+.mr-types .seg { display: inline-flex; align-items: center; }
+/* На плотном акценте цветной значок сливается — значок цветом текста кнопки. */
+:root:root .mr-types .seg.on .mr-sec-ic, :root:root .mr-subtypes .seg.on .mr-sec-ic { color: inherit !important; }
+.segs.mr-groups { margin-bottom: 8px; }
+.segs.mr-subtypes { gap: 4px; margin-bottom: 16px; }
+.mr-subtypes .seg { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; font-size: 13px; font-weight: 700; color: var(--m-fg-muted); background-color: transparent; }
+.mr-subtypes .seg:hover { color: var(--m-fg); background-color: var(--m-surface-2); }
+:root:root .mr-subtypes .seg.on { color: var(--m-fg); background-color: var(--m-surface-2); }
+
+/* Логотип без скриншота — крупно на своей размытой копии (mk-galcard-iconcover). */
+.mr-gal-iconcover { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+.mr-gal-iconcover > img:first-child { position: absolute; inset: -20%; width: 140%; height: 140%; object-fit: cover; filter: blur(24px) saturate(1.2); opacity: .55; }
+.mr-gal-iconcover > img:last-child { position: relative; width: 38%; aspect-ratio: 1; object-fit: contain; }
+
+/* Скины — сетка /skins/katalog сайта: рендер во весь рост, имя, кнопка. */
+.mr-skingrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.card.mr-skin { display: flex; flex-direction: column; gap: 8px; padding: 10px; cursor: pointer; }
+.mr-skin-art { position: relative; display: block; aspect-ratio: 3 / 4; background: var(--m-surface-2); overflow: hidden; }
+.mr-skin-art > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.mr-skin-wear { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--m-fg-muted); }
+.mr-skin-wear .icon { width: 13px; height: 13px; }
+.mr-skin-name { font-size: 14px; font-weight: 600; color: var(--m-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.mr-skin .btn { width: 100%; justify-content: center; }
+
+/* Сиды, головы, плащи — ленты нет, значок раздела и путь дальше. */
+.card.mr-sitecard { display: flex; align-items: center; gap: 20px; padding: 24px; }
+.mr-sitecard-ic { display: inline-flex; }
+.mr-sitecard-acts { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Шапка каталога по центру (владелец 30.09.2026): второй уровень — группы,
+   третий — разделы группы; первый («Библиотека | Ресурсы») уже по центру. */
+.segs.mr-groups, .segs.mr-subtypes { justify-content: center; }
+.mr-cat { --m-sec-servers: #6fc6de; --m-sec-purchases: #f5c542; }
+
+/* ── Значки меток квадратной плашкой (30.09.2026, как `.mk-mr-tg` сайта) ── */
+.mr-tg { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; height: 16px; background: var(--m-raised); color: var(--m-fg); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .28); }
+.mr-tg.is-tone { background: var(--mk-tone); color: var(--m-bg); }
+.mr-tag.is-accent .mr-tg, .mr-tg.is-accent { background: var(--m-accent); color: var(--m-bg); }
+.mr-tag .mr-tg svg, .mr-tg .mri { width: 12px !important; height: 12px !important; display: block; }
+.mr-tg .mr-svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── «На хостинг» со знаком хостинга рядом с главной кнопкой ── */
+.mr-host-mark { width: 14px; height: 14px; flex: none; fill: var(--m-info, #5aa9ff); }
+.mr-host.primary .mr-host-mark { fill: currentColor; }
+.mr-actions .btn .mr-host-mark { width: 14px; height: 14px; }
+.mr-gal-stat2 { display: none; align-items: center; gap: 3px; margin-right: 6px; vertical-align: -2px; }
+.mr-gal-stat2 svg { width: 12px; height: 12px; }
+.mr-gal-stat2 b { color: var(--m-fg); font-weight: 700; }
+.mr-gal:has(.mr-gal-foot .mr-actions > :nth-child(2)) .mr-gal-stat2 { display: inline-flex; }
+.mr-gal-foot:has(.mr-actions > :nth-child(2)) .mr-gal-stat { display: none; }
+.mr-gal-foot:has(.mr-actions > :nth-child(2)) .mr-actions { flex: 1 1 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-width: 0; }
+.mr-gal-foot:has(.mr-actions > :nth-child(2)) .mr-actions .btn { min-width: 0; padding: 0 6px; justify-content: center; }
+.mr-subtypes-gap { height: 48px; }
+
+/* ── Вкладка раздела проще (06.10.2026, владелец: «что-то не нравится») ──
+   Поиск и «Для: сборка» — одной строкой; заголовок — мелкой подписью; карточка без
+   описания, название в две строки; «В сборку» тихая, зелёная — только на наведении. */
+.mr-toolbar.mr-toolbar-one { flex-direction: row; align-items: center; flex-wrap: nowrap; margin-bottom: 14px; }
+.mr-toolbar-one .mr-search { height: 44px; }
+.mr-toolbar-one .cat3-for { flex: none; flex-wrap: nowrap; max-width: 50%; }
+.mr-toolbar-one .cat3-for-btn b { max-width: 220px; }
+.mr-toolbar-one .mr-toolbar-row:not(:has(*:not(.mr-count))) { display: none; }
+@media (max-width: 900px) { .mr-toolbar.mr-toolbar-one { flex-wrap: wrap; } .mr-toolbar-one .cat3-for { max-width: 100%; } }
+.mr-h1.mr-h1-sm { margin: 0 0 12px; font: 800 15px/1.2 var(--m-font); letter-spacing: 0; color: var(--m-fg-muted); }
+.mr-h1-sm .mr-h1-n { margin-left: 8px; font-size: 13px; }
+
+.card.mr-gal .mr-gal-cover > img { transform: none !important; }
+.mr-gal-foot .mr-actions .btn { height: 30px; }
+@media (hover: hover) and (pointer: fine) {
+  :root:root .card.mr-gal:not(:hover) .mr-gal-foot .btn.primary:not(:disabled) {
+    color: var(--m-accent); background-color: var(--m-surface-2);
+    --px-img: none; --px-ol: rgba(0, 0, 0, 0.45); --px-ft: rgba(255, 255, 255, 0.06); --px-fb: rgba(0, 0, 0, 0.3); --px-fl: transparent; --px-fr: transparent;
+  }
+  :root:root .card.mr-gal:not(:hover) .mr-gal-foot .btn.primary:not(:disabled) svg { color: var(--m-accent); }
+}
+
+/* ── Плитка ленты, 3 в ряд (06.10.2026): значок с названием, описание в две строки, метки, низ ── */
+.mr-galgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 899px) { .mr-galgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .mr-galgrid { grid-template-columns: minmax(0, 1fr); } }
+.card.mr-gal .mr-gal-cover > .ph-card-tag { top: 8px; left: 8px; }
+.card.mr-gal .mr-gal-body { gap: 10px; padding: 14px; }
+.mr-gal-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.card.mr-gal .mr-gal-icon { position: relative; left: auto; top: auto; flex: none; width: 52px; height: 52px; --px-n: 5px; clip-path: var(--px-5); }
+.card.mr-gal.has-shot .mr-gal-icon { width: 44px; height: 44px; }
+.mr-gal-names { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.card.mr-gal .mr-gal-title { font: 800 16px/1.2 var(--m-font); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card.mr-gal .mr-gal-author { font-size: 13px; line-height: 16px; }
+.mr-gal-head > .ph-card-tag { position: static; flex: none; align-self: flex-start; }
+.card.mr-gal .mr-gal-summary {
+  margin: 0; font-size: 13.5px; line-height: 19px; color: var(--m-fg-muted);
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 38px;
+}
+.card.mr-gal .mr-tags.mr-gal-tags { margin: 0; height: auto; max-height: 26px; overflow: hidden; gap: 4px 12px; }
+.card.mr-gal .mr-gal-foot { margin: auto 0 0; padding-top: 2px; }
+.card.mr-gal .mr-gal-stat { font-size: 13px; }
+.card.mr-gal .mr-gal-foot .mr-actions .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+.mr-gal-stat2 { display: none !important; }
+
+/* ── Фильтры списком (как на Modrinth, в нашем стиле): строка на весь ряд, число справа ── */
+.mr-fbox .mr-keys { flex-direction: column; flex-wrap: nowrap; gap: 2px; }
+.mr-fbox .mr-keys > .seg.mr-key { width: 100%; height: 32px; justify-content: flex-start; background-color: transparent; }
+.mr-fbox .mr-keys > .seg.mr-key:hover { background-color: var(--m-surface-2); }
+.mr-fbox .mr-keys > .seg.mr-key .mr-key-n { margin-left: auto; }
+:root:root .mr-fbox .mr-keys > .seg.mr-key.on { background-color: var(--m-accent); }
+.mr-fbox .mr-keys > .seg.mr-key.mr-more { color: var(--m-accent); }
+.mr-fbox .mr-keys > .seg.mr-key.mr-more .mr-key-n { margin-left: 2px; }
+/* «Для: …» и «Только подходящее» не вылезают за край: сжимается имя сборки, переключатель целиком */
+.mr-toolbar-one .mr-search { flex: 1 1 240px; min-width: 200px; }
+.mr-toolbar-one .cat3-for { flex: 0 1 auto; min-width: 0; max-width: none; }
+.mr-toolbar-one .cat3-for-btn { flex: 0 1 auto; min-width: 0; }
+.mr-toolbar-one .cat3-for-btn b { max-width: none; min-width: 0; }
+.mr-toolbar-one .cat3-for > .mk-pill:not(.cat3-for-btn) { flex: none; }
+.mr-toolbar-one .cat3-for { margin: 0; }
+/* Скачивания мелко рядом с автором — у каждой карточки одинаково */
+.card.mr-gal .mr-gal-author { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mr-gal-by { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-gal-dl { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 12px; font-weight: 700; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.mr-gal-dl svg { width: 11px; height: 11px; }
+.mr-gal-foot:has(.mr-actions > :nth-child(2)) .mr-gal-stat { display: inline-flex; }
+.mr-gal-stat:empty { display: none; }
+
+/* ══ Каталог плотнее (10.10.2026, владелец: «всё большое, сделай поменьше, чтобы видно было») ══
+   Сборки и моды — строкой как у Modrinth: значок 64, «название · автор · скачивания» одной строкой,
+   описание в одну строку, метки, справа одна кнопка. «На хостинг» в ленте не показываем —
+   он на странице материала. Галерея (шейдеры, текстуры, карты) — по 4 в ряд. */
+.mr-list { gap: 6px; }
+.card.mr-row { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 14px; padding: 10px 14px 10px 10px; align-items: center; }
+.mr-icon { width: 64px; height: 64px; }
+.mr-body { gap: 2px; }
+.mr-titleline { height: 22px; align-items: center; }
+.mr-title { font: 800 16px/22px var(--m-font); }
+.mr-by { font-size: 13px; }
+.mr-dl { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 12.5px; font-weight: 700; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.mr-dl svg { width: 12px; height: 12px; }
+.mr-desc { height: 20px; -webkit-line-clamp: 1; font-size: 13.5px; }
+.mr-tags { height: 22px; margin-top: 2px; gap: 2px 14px; }
+.mr-tag { height: 22px; font-size: 12.5px; }
+.mr-side { flex-direction: row; align-items: center; gap: 12px; min-width: 0; }
+.mr-side .mr-upd { font-size: 12px; }
+.mr-side .mr-actions { margin: 0; }
+.card.mr-row .mr-actions .btn { height: 32px; padding: 0 14px; font-size: 13px; }
+.mr-list .btn.secondary.mr-host, .mr-galgrid .btn.secondary.mr-host { display: none; }
+@media (max-width: 639px) { .card.mr-row { grid-template-columns: 48px minmax(0, 1fr); } .mr-icon { width: 48px; height: 48px; } }
+
+.mr-galgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1279px) { .mr-galgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 899px) { .mr-galgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.card.mr-gal .mr-gal-body { gap: 8px; padding: 10px 12px 12px; }
+.card.mr-gal .mr-gal-icon, .card.mr-gal.has-shot .mr-gal-icon { width: 36px; height: 36px; }
+.card.mr-gal .mr-gal-title { font-size: 14.5px; -webkit-line-clamp: 1; }
+.card.mr-gal .mr-gal-summary { font-size: 12.5px; line-height: 17px; min-height: 34px; }
+.card.mr-gal .mr-gal-foot .mr-actions .btn { height: 28px; font-size: 12.5px; }
+
+/* Переключатель вида ленты: список / карточки (как у Modrinth) */
+.mr-view { flex: none; gap: 2px; }
+.mr-view .seg { width: 40px; height: 40px; padding: 0; justify-content: center; }
+.mr-view .seg svg { width: 16px; height: 16px; }
+.mr-toolbar-one .mr-toolbar-row { display: flex !important; }
+
+/* Карточки для сборок и модов — крупно, по 3 (по 2 в узком окне), картинка 16:9 */
+.mr-galgrid.is-big { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1279px) { .mr-galgrid.is-big { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .mr-galgrid.is-big { grid-template-columns: minmax(0, 1fr); } }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-body { gap: 8px; padding: 12px 14px 14px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-icon { width: 48px; height: 48px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-title { font-size: 16px; -webkit-line-clamp: 2; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-summary { font-size: 13.5px; line-height: 19px; min-height: 38px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-foot .mr-actions .btn { height: 32px; font-size: 13px; }
+
+/* Карточки сборок и модов — как галерея Modrinth: по 2 в ряд (3 на широком), картинка сверху,
+   значок слева от «названия · автора» и описания, метки, внизу скачивания и кнопка. */
+.mr-galgrid.is-big { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (min-width: 1700px) { .mr-galgrid.is-big { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .mr-galgrid.is-big { grid-template-columns: minmax(0, 1fr); } }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-cover { aspect-ratio: 2 / 1; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-body {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr); grid-template-areas: 'icon names' 'icon desc' 'tags tags' 'foot foot';
+  column-gap: 14px; row-gap: 6px; padding: 14px 16px 16px; align-items: start;
+}
+.mr-galgrid.is-big .card.mr-gal .mr-gal-head { display: contents; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-icon { grid-area: icon; width: 64px; height: 64px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-names { grid-area: names; flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-head > .ph-card-tag { display: none; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-title { font-size: 17px; -webkit-line-clamp: 1; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-summary { grid-area: desc; min-height: 0; font-size: 14px; line-height: 20px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-tags { grid-area: tags; margin-top: 4px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-foot { grid-area: foot; padding-top: 6px; }
+
+/* ══ Мельче всё (10.10.2026, владелец: «всё слишком большое и не помещается») ══ */
+@media (min-width: 1024px) { .mr-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 16px; } }
+.mr-main { container-type: inline-size; container-name: feed; }
+.card.mr-fbox { gap: 10px; padding: 10px; }
+.mr-fsec { gap: 4px; }
+.mr-fsec-t { font-size: 11.5px; }
+.seg.mr-pick-btn { height: 32px; padding: 0 10px; font-size: 13px; }
+.mr-quick > .seg.mr-key { height: 26px; font-size: 11.5px; }
+.mr-fbox .mr-keys > .seg.mr-key { height: 28px; padding: 0 8px; font-size: 12.5px; }
+.mr-fbox .mr-key-n { font-size: 11px; }
+.mr-toolbar-one { margin-bottom: 10px; }
+.mr-toolbar-one .mr-search { height: 38px; }
+.mr-view .seg { width: 36px; height: 36px; }
+.mr-h1.mr-h1-sm { margin-bottom: 8px; font-size: 14px; }
+
+/* Карточки: 3 в ряд, когда лента шире 820 px, иначе 2; картинка ниже, текст мельче */
+.mr-galgrid.is-big { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@container feed (min-width: 820px) { .mr-galgrid.is-big { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container feed (min-width: 1300px) { .mr-galgrid.is-big { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container feed (max-width: 520px) { .mr-galgrid.is-big { grid-template-columns: minmax(0, 1fr); } }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-cover { aspect-ratio: 16 / 8; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-body { grid-template-columns: 40px minmax(0, 1fr); column-gap: 10px; row-gap: 4px; padding: 10px 12px 12px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-icon { width: 40px; height: 40px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-names { flex-direction: column; gap: 0; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-title { font-size: 14px; line-height: 18px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-author { font-size: 12px; line-height: 15px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-summary { grid-column: 1 / -1; grid-area: auto; grid-row: 2; font-size: 12.5px; line-height: 17px; -webkit-line-clamp: 2; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-body { grid-template-areas: 'icon names' 'desc desc' 'tags tags' 'foot foot'; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-summary { grid-area: desc; }
+.mr-galgrid.is-big .card.mr-gal .mr-tags.mr-gal-tags { max-height: 22px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-tags .mr-tag { height: 22px; font-size: 11.5px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-foot { padding-top: 2px; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-foot .mr-actions .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+.card.mr-gal .mr-gal-cover > .ph-card-tag { height: 18px; font-size: 10px; }
+.card.mr-gal .mr-owned { height: 18px; font-size: 10.5px; }
+
+/* Мелкие плитки (шейдеры, текстуры, карты) — так же компактно */
+.mr-galgrid:not(.is-big) { gap: 10px; }
+@container feed (min-width: 1100px) { .mr-galgrid:not(.is-big) { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+/* ══ Разделы каталога — вкладки, а не кнопки (10.10.2026) ══
+   Это навигация, не действие: одна тёмная капсула слева, внутри плоские пункты; выбранный —
+   плоская заливка акцента без «кирпичного» объёма (объём — только у кнопок действий).
+   Подразделы — ниже, тише: выбранный подчёркнут, без заливки. */
+.segs.mr-groups, .segs.mr-subtypes { justify-content: flex-start; }
+.segs.mr-types.mr-groups {
+  display: inline-flex; width: auto; max-width: 100%; flex-wrap: wrap; gap: 2px; margin: 0 0 8px; padding: 4px;
+  background-color: var(--m-surface); --px-n: 5px; clip-path: var(--px-5);
+}
+.mr-groups .seg { height: 32px; padding: 0 12px; font-size: 13.5px; font-weight: 700; }
+.mr-groups .mr-sec-ic { margin-right: 7px; }
+.mr-groups .mr-sec-ic .px-icon, .mr-groups .mr-sec-ic svg { width: 14px; height: 14px; }
+:root:root .mr-groups .seg.on {
+  color: var(--px-on-accent); background-color: var(--m-accent);
+  --px-img: none; --px-ol: transparent; --px-ft: transparent; --px-fb: transparent; --px-fl: transparent; --px-fr: transparent;
+}
+.mr-groups .seg:not(.on):hover { background-color: var(--m-surface-2); }
+
+.segs.mr-subtypes { gap: 2px; margin: 0 0 12px; }
+.mr-subtypes .seg { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.mr-subtypes .mr-sec-ic { margin-right: 6px; }
+:root:root .mr-subtypes .seg.on { color: var(--m-fg); background-color: transparent; box-shadow: inset 0 -2px 0 var(--m-accent); --px-img: none; --px-ft: transparent; --px-fb: transparent; --px-ol: transparent; }
+.mr-subtypes-gap { height: 40px; }
+
+/* Умный поиск: под полем — что поняли из запроса */
+.mr-smart { display: flex; flex-direction: column; gap: 6px; flex: 1 1 240px; min-width: 200px; }
+.mr-smart .mr-search { width: 100%; }
+.mr-smart-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; }
+.mr-smart-h { color: var(--m-fg-subtle); font-weight: 700; }
+.mr-smart-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; font-weight: 800; color: var(--px-on-accent); background: var(--m-accent); --px-n: 4px; clip-path: var(--px-4); }
+.mr-smart-chip.is-q { color: var(--m-fg); background: var(--m-surface-2); }
+.mr-smart-x { margin-left: 4px; padding: 0; border: 0; background: none; cursor: pointer; font: 700 12px var(--m-font); color: var(--m-fg-subtle); text-decoration: underline; }
+.mr-smart-x:hover { color: var(--m-fg); }
+.mr-toolbar-one { align-items: flex-start; }
+/* Поле внутри колонки «умного поиска» не растягивается по высоте */
+.mr-toolbar-one .mr-smart .mr-search { flex: none; height: 38px; min-width: 0; }
+
+/* Карточка без картинки: строки не растягиваются на всю высоту ряда — без дыр между
+   названием, описанием и метками; кнопка прижата вниз (10.10.2026). */
+.mr-galgrid.is-big .card.mr-gal .mr-gal-body { grid-template-rows: auto auto auto 1fr; align-content: start; }
+.mr-galgrid.is-big .card.mr-gal .mr-gal-foot { align-self: end; }
+.card.mr-gal .mr-gal-iconcover { background: color-mix(in srgb, var(--m-surface-2) 70%, #000); }
+.card.mr-gal .mr-gal-iconcover > img:last-child { width: 30%; max-width: 96px; filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35)); }
+
+/* Разделы — по центру над лентой */
+.segs.mr-groups, .segs.mr-subtypes { justify-content: center; }
+.segs.mr-types.mr-groups { display: flex; width: fit-content; margin-left: auto; margin-right: auto; }
+.segs.mr-subtypes { width: fit-content; margin-left: auto; margin-right: auto; }
+/* Автор и скачивания в одну строку: автор ужимается, цифра всегда видна */
+.card.mr-gal .mr-gal-names { min-width: 0; }
+.card.mr-gal .mr-gal-author { flex-wrap: nowrap; overflow: hidden; }
+.card.mr-gal .mr-gal-by { flex: 0 1 auto; }
+
+/* ══ Сборка — первый блок колонки фильтров (10.10.2026, 2-я версия) ══
+   Тихая карточка в стиле фильтров: значок, имя, версия · ядро, обычная кнопка «Сменить
+   сборку» (видно, что нажимается), под ней переключатель «Только подходящее» с числами. */
+.cfor-wrap { position: relative; margin-bottom: 10px; }
+.card.cfor { display: flex; flex-direction: column; gap: 10px; padding: 12px; background-color: var(--m-surface); }
+.cfor-h { font: 600 11.5px/14px var(--m-font); color: var(--m-fg-subtle); }
+.cfor-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cfor-cover { position: relative; display: block; flex: none; width: 40px; height: 40px; overflow: hidden; --px-n: 4px; clip-path: var(--px-4); }
+.cfor-cover.sm { width: 34px; height: 34px; }
+.cfor-cover > * { width: 100%; height: 100%; }
+.cfor-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cfor-text b { font-size: 14px; font-weight: 800; color: var(--m-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cfor-text small { font-size: 12px; font-weight: 600; color: var(--m-fg-subtle); }
+.btn.cfor-change { width: 100%; justify-content: center; gap: 6px; }
+.btn.cfor-change .icon { width: 11px; height: 11px; }
+.cfor-fit { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; color: var(--m-fg); }
+.cfor-fit .tgl { flex: none; pointer-events: none; }
+.cfor-fit-t { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cfor-fit-t b { font-size: 13px; font-weight: 700; }
+.cfor-fit-t small { font-size: 11.5px; color: var(--m-fg-subtle); font-variant-numeric: tabular-nums; }
+.cfor-pop {
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0; padding: 6px;
+  background: var(--m-surface-2); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); --px-n: 5px; clip-path: var(--px-5);
+}
+.cfor-pop-h { padding: 4px 6px 6px; font: 600 11.5px/14px var(--m-font); color: var(--m-fg-subtle); }
+.cfor-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+.cfor-item { display: flex; align-items: center; gap: 10px; padding: 6px; border: 0; cursor: pointer; text-align: left; color: var(--m-fg); background: transparent; --px-n: 4px; clip-path: var(--px-4); }
+.cfor-item:hover { background: rgba(255, 255, 255, 0.05); }
+.cfor-item.on { background: rgba(255, 255, 255, 0.07); }
+.cfor-item > .icon { width: 13px; height: 13px; margin-left: auto; flex: none; color: var(--m-accent); }
+.cfor-item-t { display: flex; flex-direction: column; min-width: 0; }
+.cfor-item-t b { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cfor-item-t small { font-size: 11.5px; color: var(--m-fg-subtle); }
+.cfor-new { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 32px; margin-top: 4px; border: 0; cursor: pointer; font: 700 12.5px var(--m-font); color: var(--m-fg-muted); background: transparent; }
+.cfor-new:hover { color: var(--m-fg); }
+.cfor-new .icon { width: 11px; height: 11px; }
+
+/* ── Обновление ленты без затемнения (10.10.2026, владелец: «весь экран сереет и я жду») ──
+   Старые карточки остаются и кликаются; над лентой — тонкая бегущая полоса. Скелетоны —
+   только при самом первом входе в раздел. */
+.mr-loadbar { position: relative; height: 3px; margin: -3px 0 0; overflow: hidden; opacity: 0; transition: opacity 120ms; }
+.mr-loadbar.on { opacity: 1; }
+.mr-loadbar.on::after { content: ''; position: absolute; top: 0; bottom: 0; left: -30%; width: 30%; background: var(--m-accent); animation: mr-loadbar 900ms steps(12, end) infinite; }
+@keyframes mr-loadbar { to { left: 100%; } }
+.is-refreshing { transition: opacity 200ms 250ms; opacity: 0.85; }
+/* Карточки ниже экрана не рисуются, пока до них не долистали */
+.mr-galgrid > .card.mr-gal, .mr-list > .card.mr-row { content-visibility: auto; contain-intrinsic-size: auto 300px; }
+.mr-list > .card.mr-row { contain-intrinsic-size: auto 90px; }
+@media (prefers-reduced-motion: reduce) { .mr-loadbar.on::after { animation: none; left: 0; width: 100%; opacity: 0.5; } }
+
+/* Только каталог мельче (владелец 10.10.2026: «меньше — только каталог, библиотеку оставить»):
+   масштаб корня каталога, остальной лаунчер в прежнем размере. */
+.mr-cat:not(.is-server) { zoom: 0.88; }
+
+/* Пиксельный круг загрузки на «Показать ещё»: 8 квадратиков, бежит яркий */
+.mr-spin { position: relative; display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px; }
+.mr-spin::before {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(var(--m-accent) 0 0) 6px 0 / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 80%, transparent) 0 0) 11px 2px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 65%, transparent) 0 0) 12px 6px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 50%, transparent) 0 0) 11px 10px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 40%, transparent) 0 0) 6px 12px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 30%, transparent) 0 0) 1px 10px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 22%, transparent) 0 0) 0 6px / 4px 4px,
+    linear-gradient(color-mix(in srgb, var(--m-accent) 15%, transparent) 0 0) 1px 2px / 4px 4px;
+  background-repeat: no-repeat;
+  animation: mr-spin 800ms steps(8, end) infinite;
+}
+@keyframes mr-spin { to { transform: rotate(360deg); } }
+.mr-more .btn { gap: 0; }
+@media (prefers-reduced-motion: reduce) { .mr-spin::before { animation-duration: 2.4s; } }
+
+/* ── Заглушки = настоящие карточки (10.10.2026): полоса внутри строки текста, высоту даёт
+   сам шрифт; кнопка — той же высоты, что настоящая. Ничего не прыгает, когда приходят данные. */
+.skel-text {
+  display: inline-block; height: 0.72em; vertical-align: middle; max-width: 100%;
+  background: color-mix(in srgb, var(--m-fg) 9%, var(--m-surface-2));
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+.cat-skel .skel-text + br + .skel-text { margin-top: 0; }
+.cat-skel .mr-gal-summary { display: block; }
+.btn.skel-btn { display: inline-block; width: 104px; pointer-events: none; color: transparent; animation: skel-pulse 1.4s ease-in-out infinite; }
+.mr-gal-foot .mr-actions .btn.skel-btn, .mr-side .btn.skel-btn { min-width: 104px; }
+.cat-skel .mr-tag { color: transparent; }
+@keyframes skel-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .skel-text, .btn.skel-btn { animation: none; } }
+/* Карточки ниже экрана не рисуются — но их оценка высоты близка к настоящей,
+   иначе при листании лента «доезжает» (было 360px на все виды). */
+.mr-galgrid.is-big > .card.mr-gal { contain-intrinsic-size: auto 330px; }
+.mr-h1-n.mr-slow { display: inline-flex; align-items: center; font-size: 13px; }
+.mr-h1-n.mr-slow .mr-spin { width: 12px; height: 12px; transform: scale(0.75); margin-right: 4px; }
+.mr-tab-art .mr-tab-block { display: block; width: 15px; height: 15px; object-fit: contain; }
+
+/* Колонка фильтров при листании не обрезается посередине (владелец 10.10.2026: «баг в дизайне»):
+   листается сама карточка фильтров, а не колонка — рамка карточки целиком всегда видна,
+   «Ставлю в сборку» стоит на месте, а его выпадающий список не обрезается краем колонки. */
+@media (min-width: 1024px) {
+  .mr-aside { display: flex; flex-direction: column; overflow: visible; }
+  .mr-aside > .cfor-wrap { flex: none; }
+  .mr-aside > .card.mr-fbox {
+    flex: 0 1 auto; min-height: 120px; overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--m-surface-2) transparent;
+  }
+  .mr-aside > .card.mr-fbox::-webkit-scrollbar { width: 6px; }
+  .mr-aside > .card.mr-fbox::-webkit-scrollbar-thumb { background: var(--m-surface-2); }
+  .mr-aside > .card.mr-fbox > * { flex: none; }
+}

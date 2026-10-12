@@ -1,0 +1,248 @@
+//! What a player expects from a picture they opened in the viewer: put it on
+//! the clipboard, or keep a copy on disk.
+
+use std::path::PathBuf;
+use std::time::Duration;
+
+use futures::StreamExt;
+use serde::Deserialize;
+use tauri::image::Image;
+use tauri::AppHandle;
+use tauri_plugin_clipboard_manager::ClipboardExt;
+
+use crate::engine::*;
+
+const MAX_BYTES: usize = 32 * 1024 * 1024;
+const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Where the opened picture came from. The webview names one of the two, and
+/// the core decides on its own whether that source may be read at all.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PictureRef {
+    pub url: Option<String>,
+    pub path: Option<String>,
+}
+
+fn too_big() -> String {
+    format!("Картинка больше {} МБ", MAX_BYTES / 1024 / 1024)
+}
+
+/// Chat attachments live on the storage CDN (removed-service.invalid), the rest of the
+/// pictures on removed-service.invalid. Anything else the webview asks for is refused
+/// rather than fetched on its behalf.
+const OUR_DOMAINS: [&str; 2] = ["removed-service.invalid", "removed-service.invalid"];
+
+fn host_allowed(host: &str) -> bool {
+    let h = host.to_ascii_lowercase();
+    OUR_DOMAINS.iter().any(|d| h == *d || h.ends_with(&format!(".{}", d)))
+}
+
+async fn remote_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let parsed = validate_external_url(url)?;
+    let allowed = parsed.scheme() == "https" && parsed.host_str().map(host_allowed).unwrap_or(false);
+    if !allowed {
+        return Err("Эту картинку лаунчер не может скачать".into());
+    }
+    let res = client()
+        .get(parsed.as_str())
+        .timeout(FETCH_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| net_err(&e))?;
+    if !res.status().is_success() {
+        return Err(format!("Сервер ответил {}", res.status()));
+    }
+    if res.content_length().map(|n| n as usize > MAX_BYTES).unwrap_or(false) {
+        return Err(too_big());
+    }
+    let mut out: Vec<u8> = Vec::new();
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| net_err(&e))?;
+        if out.len() + chunk.len() > MAX_BYTES {
+            return Err(too_big());
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
+/// Folders the viewer shows pictures from: screenshots of every build, the
+/// custom wallpaper and theme images. The rest of the launcher's folders hold
+/// account data, session files and settings, which "Save as" would otherwise
+/// hand to any path an XSS names.
+fn picture_folder_ok(file: &std::path::Path) -> bool {
+    let profiles = game_root().join("profiles");
+    if is_inside(&profiles, file) {
+        let base = profiles.canonicalize().unwrap_or(profiles);
+        let real = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+        let rel: Vec<String> = real
+            .strip_prefix(&base)
+            .map(|r| r.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        return rel.len() >= 3 && rel[1] == "screenshots";
+    }
+    is_inside(&data_dir().join("wallpaper"), file)
+}
+
+/// PNG, JPEG, WebP, GIF or BMP by their first bytes, whatever the extension.
+pub(crate) fn looks_like_image(b: &[u8]) -> bool {
+    b.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
+        || b.starts_with(&[0xFF, 0xD8, 0xFF])
+        || (b.len() >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP")
+        || b.starts_with(b"GIF87a")
+        || b.starts_with(b"GIF89a")
+        || b.starts_with(b"BM")
+}
+
+/// A path arriving over IPC is untrusted: only pictures in the viewer's own
+/// folders are readable, so an XSS cannot turn the viewer into a file reader.
+fn local_file(path: &str) -> Result<PathBuf, String> {
+    let file = PathBuf::from(path);
+    if path.is_empty() || !picture_folder_ok(&file) {
+        return Err("Эта картинка лежит вне папок лаунчера".into());
+    }
+    let meta = std::fs::metadata(&file).map_err(|e| format!("Файл не читается: {}", e))?;
+    if !meta.is_file() {
+        return Err("Это не файл".into());
+    }
+    if meta.len() as usize > MAX_BYTES {
+        return Err(too_big());
+    }
+    Ok(file)
+}
+
+/// The path is whatever the webview sent, so the tail is cut on both
+/// separators: a Windows path must yield a file name on a Linux build too.
+fn file_name_of(path: &str) -> Option<String> {
+    let last = path.rsplit(['/', '\\']).next()?.trim();
+    (!last.is_empty()).then(|| last.to_string())
+}
+
+fn name_of(src: &PictureRef) -> String {
+    let raw = src
+        .path
+        .as_deref()
+        .and_then(file_name_of)
+        .or_else(|| {
+            let url = url::Url::parse(src.url.as_deref().unwrap_or("")).ok()?;
+            let last = url.path_segments()?.next_back()?.replace("%20", " ");
+            if last.contains('%') {
+                return None;
+            }
+            Some(last)
+        })
+        .unwrap_or_default();
+    safe_file_name(&raw).unwrap_or_else(|_| "image.png".into())
+}
+
+async fn bytes_of(src: &PictureRef) -> Result<Vec<u8>, String> {
+    if let Some(path) = src.path.as_deref().filter(|p| !p.is_empty()) {
+        let file = local_file(path)?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            let bytes = std::fs::read(&file).map_err(|e| format!("Файл не читается: {}", e))?;
+            if !looks_like_image(&bytes) {
+                return Err("Файл не похож на изображение".to_string());
+            }
+            Ok(bytes)
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    match src.url.as_deref().filter(|u| !u.is_empty()) {
+        Some(url) => remote_bytes(url).await,
+        None => Err("Нечего копировать".into()),
+    }
+}
+
+/// The clipboard takes raw RGBA, so the picture is decoded first — on the
+/// blocking pool, because a 4K frame stalls the webview for a noticeable beat.
+pub async fn copy_picture(app: AppHandle, src: PictureRef) -> Result<(), String> {
+    let bytes = bytes_of(&src).await?;
+    let rgba = tauri::async_runtime::spawn_blocking(move || {
+        let img = image::load_from_memory(&bytes)
+            .map_err(|_| "Файл не похож на изображение".to_string())?
+            .to_rgba8();
+        let (w, h) = img.dimensions();
+        Ok::<_, String>((img.into_raw(), w, h))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let (raw, w, h) = rgba;
+    app.clipboard()
+        .write_image(&Image::new(&raw, w, h))
+        .map_err(|e| format!("Буфер обмена не принял картинку: {}", e))
+}
+
+/// Returns the chosen path, or `None` when the save dialog was dismissed.
+pub async fn save_picture_as(src: PictureRef) -> Result<Option<String>, String> {
+    let name = name_of(&src);
+    let ext = name.rsplit('.').next().filter(|e| e.len() <= 5 && !e.is_empty()).unwrap_or("png");
+    let bytes = bytes_of(&src).await?;
+    let picked = save_file(
+        dialog()
+            .add_filter("Изображение", &[ext])
+            .set_file_name(&name)
+            .set_title("Куда сохранить изображение"),
+    )
+    .await;
+    let Some(out) = picked else { return Ok(None) };
+    std::fs::write(&out, &bytes).map_err(|e| format!("Не удалось сохранить: {}", e))?;
+    Ok(Some(out.to_string_lossy().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_our_hosts_are_fetched() {
+        for host in ["removed-service.invalid", "removed-service.invalid", "removed-service.invalid", "removed-service.invalid"] {
+            assert!(host_allowed(host), "{} — наш хост, вложения лежат там", host);
+        }
+        for host in ["removed-service.invalid.evil.example", "evil.example", "notcopper.net", "cdncopper.trade"] {
+            assert!(!host_allowed(host), "{} только выглядит нашим — качать оттуда нельзя", host);
+        }
+    }
+
+    #[test]
+    fn name_comes_from_the_source_and_is_sanitised() {
+        let by_path = PictureRef { url: None, path: Some(r"C:\games\screenshots\2026-08-19.png".into()) };
+        assert_eq!(name_of(&by_path), "2026-08-19.png", "имя режется по '\\' на любой платформе сборки");
+        let by_posix_path = PictureRef { url: None, path: Some("/home/p/.copper/shot.png".into()) };
+        assert_eq!(name_of(&by_posix_path), "shot.png");
+        let by_url = PictureRef {
+            url: Some("copper-disabled://removed-service/media/chat/my%20shot.png".into()),
+            path: None,
+        };
+        assert_eq!(name_of(&by_url), "my shot.png");
+        let traversal = PictureRef { url: Some("copper-disabled://removed-service/media/..".into()), path: None };
+        assert_eq!(name_of(&traversal), "image.png", "«..» не должно стать именем файла");
+        let empty = PictureRef { url: None, path: None };
+        assert_eq!(name_of(&empty), "image.png");
+    }
+
+    #[test]
+    fn foreign_paths_are_refused() {
+        assert!(local_file(r"C:\Windows\System32\config\SAM").is_err());
+        assert!(local_file("/etc/shadow").is_err());
+        assert!(local_file("").is_err());
+        // launcher's own data outside the picture folders
+        assert!(!picture_folder_ok(&data_dir().join("accounts.json")));
+        assert!(!picture_folder_ok(&game_root().join("profiles.json")));
+        assert!(!picture_folder_ok(&game_root().join("profiles").join("A").join("copper-settings.json")));
+        assert!(!picture_folder_ok(&game_root().join("profiles").join("A").join("mods").join("x.png")));
+        assert!(picture_folder_ok(&game_root().join("profiles").join("A").join("screenshots").join("1.png")));
+        assert!(picture_folder_ok(&data_dir().join("wallpaper").join("w.png")));
+    }
+
+    #[test]
+    fn image_signature_is_checked() {
+        assert!(looks_like_image(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0]));
+        assert!(looks_like_image(&[0xFF, 0xD8, 0xFF, 0xE0]));
+        assert!(looks_like_image(b"RIFF\0\0\0\0WEBPVP8 "));
+        assert!(!looks_like_image(b"{\"token\":\"x\"}"));
+        assert!(!looks_like_image(b""));
+    }
+}

@@ -1,0 +1,1031 @@
+use super::cf_memo::{cf_memo, cf_memo_key, proxy_verdict, ProxyVerdict};
+use crate::engine::*;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+use tauri::AppHandle;
+
+/// CurseForge requests go through the backend proxy so the API key stays
+/// server-side; the public keyless mirror is the fallback.
+pub(crate) fn cf_base() -> String {
+    format!("{}/launcher/cf", COPPER_API)
+}
+
+pub(crate) const CF_MIRROR: &str = "https://api.curse.tools";
+
+pub(crate) async fn cf_get(path: &str, q: &[(String, String)]) -> Result<Value, String> {
+    let key = cf_memo_key(path, q);
+    if let Some(hit) = cf_memo(|m, now| m.answer(&key, now)) {
+        return Ok(hit);
+    }
+    if !cf_memo(|m, now| m.proxy_skipped(&key, now)) {
+        let via_proxy = client()
+            .get(format!("{}/{}", cf_base(), path))
+            .query(q)
+            .send()
+            .await;
+        let verdict = match &via_proxy {
+            Ok(r) => proxy_verdict(
+                Some(r.status().as_u16()),
+                r.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
+            ),
+            Err(_) => proxy_verdict(None, None),
+        };
+        cf_memo(|m, now| m.note(&key, verdict, now));
+        if let Ok(r) = via_proxy {
+            if r.status().is_success() {
+                if let Ok(j) = r.json::<Value>().await {
+                    if j.get("data").is_some() {
+                        cf_memo(|m, now| m.remember_answer(&key, &j, now));
+                        return Ok(j);
+                    }
+                }
+            }
+        }
+    }
+    let r = client()
+        .get(format!("{}/{}", CF_MIRROR, path))
+        .query(q)
+        .send()
+        .await
+        .map_err(|_| unreachable_text())?;
+    if !r.status().is_success() {
+        return Err(format!("CurseForge ответил {}", r.status()));
+    }
+    let j = r.json::<Value>().await.map_err(|e| e.to_string())?;
+    if j.get("data").is_some() {
+        cf_memo(|m, now| m.remember_answer(&key, &j, now));
+    }
+    Ok(j)
+}
+
+/// The POST endpoints share the outage window only: their bodies differ per call
+/// and are not worth a key of their own.
+fn cf_post_urls(proxy_path: &str, mirror_path: &str) -> Vec<String> {
+    let mirror = format!("{}/{}", CF_MIRROR, mirror_path);
+    if cf_memo(|m, now| m.proxy_skipped("", now)) {
+        vec![mirror]
+    } else {
+        vec![format!("{}/{}", cf_base(), proxy_path), mirror]
+    }
+}
+
+fn cf_note_post(url: &str, res: &Result<reqwest::Response, reqwest::Error>) {
+    if !url.starts_with(&cf_base()) {
+        return;
+    }
+    let verdict = match res {
+        Ok(r) => proxy_verdict(
+            Some(r.status().as_u16()),
+            r.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
+        ),
+        Err(_) => proxy_verdict(None, None),
+    };
+    if let ProxyVerdict::Outage(_) = verdict {
+        cf_memo(|m, now| m.note("", verdict, now));
+    }
+}
+
+/// Что показать, когда не ответили ОБА пути к CurseForge.
+///
+/// Здесь сходятся наш прокси и зеркало: если не дошло ни туда, ни туда, дело
+/// почти всегда в сети самого игрока - провайдер режет домен, включён VPN,
+/// который сам не пускает. Дословная ошибка библиотеки («error sending request
+/// for url…») про это не говорит ничего: человек читает незнакомый адрес и
+/// несёт скриншот в поддержку, хотя чинить надо у себя.
+fn unreachable_text() -> String {
+    "CurseForge не отвечает. Так бывает, когда провайдер режет к нему доступ: включи или выключи VPN и повтори. Моды с Modrinth при этом ставятся как обычно."
+        .to_string()
+}
+
+pub(crate) fn cf_class_id(kind: &str) -> u32 { match kind { "resourcepack" => 12, "shader" => 6552, "modpack" => 4471, "datapack" => 6945, "world" => 17, _ => 6 } }
+pub(crate) fn cf_loader_type(loader: &str) -> u32 { match loader { "forge" => 1, "fabric" => 4, "quilt" => 5, "neoforge" => 6, _ => 0 } }
+
+/// algo=1 is sha1 in the CurseForge hash list.
+pub(crate) fn cf_sha1(file: &Value) -> String {
+    file["hashes"].as_array()
+        .and_then(|a| a.iter().find(|h| h["algo"] == 1))
+        .and_then(|h| h["value"].as_str()).unwrap_or("").to_string()
+}
+
+/// `downloadUrl` is null when the author blocks third-party downloads, and the
+/// edge CDN answers 403 for some files while mediafilez serves the same path.
+/// File names must be percent-encoded (spaces and brackets are common).
+pub(crate) fn cf_file_urls(file: &Value, fname: &str) -> Vec<String> {
+    let fid = file["id"].as_u64().unwrap_or(0);
+    let mut out: Vec<String> = vec![];
+    // Метаданные могут прийти с запасного зеркала (api.curse.tools), поэтому
+    // ссылке на файл верим, только если она ведёт на CDN CurseForge (аудит
+    // 24.09.2026, R3). Иначе остаются собранные ниже адреса forgecdn.
+    if let Some(u) = file["downloadUrl"].as_str().filter(|s| is_forgecdn_url(s)) {
+        out.push(u.to_string());
+    }
+    if fid > 0 {
+        let enc = urlencode(fname);
+        for host in ["https://edge.forgecdn.net", "https://mediafilez.forgecdn.net"] {
+            let u = format!("{}/files/{}/{}/{}", host, fid / 1000, fid % 1000, enc);
+            if !out.contains(&u) { out.push(u) }
+        }
+    }
+    out
+}
+
+/// Только https и только *.forgecdn.net.
+fn is_forgecdn_url(u: &str) -> bool {
+    let Ok(p) = url::Url::parse(u) else { return false };
+    p.scheme() == "https"
+        && p.host_str().is_some_and(|h| h.to_ascii_lowercase().ends_with(".forgecdn.net"))
+}
+
+pub(crate) async fn cf_download(file: &Value, fname: &str, dest: &Path) -> Result<String, String> {
+    cf_download_cancellable(file, fname, dest, None).await
+}
+
+/// Cancellation reaches the transfer itself: a modpack archive on a slow line
+/// takes minutes, and «Отменить» used to wait for the last byte.
+pub(crate) async fn cf_download_cancellable(
+    file: &Value,
+    fname: &str,
+    dest: &Path,
+    cancel: Option<&Halt>,
+) -> Result<String, String> {
+    let sha1 = cf_sha1(file);
+    let sum = if sha1.is_empty() { None } else { Some(Sum::Sha1(sha1.as_str())) };
+    let size = file["fileLength"].as_u64();
+    // Linked from the shared store when another build already has this file:
+    // the digest is CurseForge's own, so the bytes are the ones it would serve.
+    if !sha1.is_empty() && !dest.exists() && link_from_store(&sha1, dest, size) {
+        return Ok(cf_file_urls(file, fname).into_iter().next().unwrap_or_default());
+    }
+    let mut last = String::new();
+    for u in cf_file_urls(file, fname) {
+        match download_checked_cancellable(&u, dest, sum, size, cancel).await {
+            Ok(_) => {
+                if !sha1.is_empty() { adopt_to_store(dest, &sha1); }
+                return Ok(u);
+            }
+            Err(e) => last = e,
+        }
+    }
+    Err(if last.is_empty() { "у файла нет ни одной ссылки на загрузку".into() } else { last })
+}
+
+/// What the bulk endpoint takes in one request; matches the backend DTO cap.
+const CF_BULK_MAX: usize = 500;
+
+/// File metadata for a whole manifest in a few requests. One GET per file
+/// meant hundreds of round trips through our proxy, and its per-address limit
+/// (120 a minute) turned a big pack into 429s and minutes of waiting. Ids
+/// missing from the answer are left to the per-file path.
+pub(crate) async fn cf_files_bulk(ids: &[u64]) -> std::collections::HashMap<u64, Value> {
+    let mut out = std::collections::HashMap::new();
+    for chunk in ids.chunks(CF_BULK_MAX) {
+        let body = serde_json::json!({ "fileIds": chunk });
+        for url in cf_post_urls("files", "v1/mods/files") {
+            let res = client().post(&url).json(&body).send().await;
+            cf_note_post(&url, &res);
+            let Ok(res) = res else { continue };
+            if !res.status().is_success() {
+                continue;
+            }
+            let Ok(j) = res.json::<Value>().await else { continue };
+            let Some(files) = j["data"].as_array() else { continue };
+            for f in files {
+                if let Some(id) = f["id"].as_u64().filter(|id| chunk.contains(id)) {
+                    out.insert(id, f.clone());
+                }
+            }
+            break;
+        }
+    }
+    out
+}
+
+/// Manifest entry resolved to the file CurseForge will serve.
+struct CfPlanned {
+    file: Value,
+    name: String,
+    dest: PathBuf,
+    required: bool,
+}
+
+/// Files a CurseForge manifest skipped as optional and failed to fetch.
+pub(crate) struct CfFetched {
+    pub skipped: Vec<String>,
+}
+
+/// Every mod of a CurseForge manifest into `mods`: metadata in bulk, then the
+/// downloads `PACK_PARALLEL` at a time. The first required file that cannot be
+/// had fails the pack at once; going on through hundreds of mods only kept the
+/// card frozen for minutes before the same verdict.
+pub(crate) async fn cf_fetch_manifest_files(
+    list: &[Value],
+    mods: &Path,
+    cancel: Option<&Halt>,
+    on_file: &(dyn Fn(usize, usize) + Sync),
+) -> Result<CfFetched, String> {
+    use futures::TryStreamExt;
+    let wanted: Vec<(u64, u64, bool)> = list
+        .iter()
+        .map(|f| (f["projectID"].as_u64().unwrap_or(0), f["fileID"].as_u64().unwrap_or(0), f["required"].as_bool().unwrap_or(true)))
+        .filter(|(pid, fid, _)| *pid != 0 && *fid != 0)
+        .collect();
+    let ids: Vec<u64> = wanted.iter().map(|(_, fid, _)| *fid).collect();
+    let mut known = or_cancel(cf_files_bulk(&ids), cancel).await?;
+    let mut planned = Vec::with_capacity(wanted.len());
+    let mut skipped = vec![];
+    for (pid, fid, required) in wanted {
+        let file = match known.remove(&fid) {
+            Some(f) => f,
+            None => match or_cancel(cf_get(&format!("v1/mods/{}/files/{}", pid, fid), &[]), cancel).await? {
+                Ok(j) => j["data"].clone(),
+                Err(e) if required => return Err(format!("файл #{} ({})", fid, e)),
+                Err(_) => {
+                    skipped.push(format!("#{}", fid));
+                    continue;
+                }
+            },
+        };
+        let name = match safe_file_name(file["fileName"].as_str().unwrap_or("")) {
+            Ok(n) => n,
+            Err(e) if required => return Err(format!("файл #{} ({})", fid, e)),
+            Err(_) => continue,
+        };
+        let dest = safe_child(mods, &name)?;
+        planned.push(CfPlanned { file, name, dest, required });
+    }
+    let total = planned.len();
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let done = &done;
+    let optional_failed = std::sync::Mutex::new(Vec::<String>::new());
+    let optional_failed = &optional_failed;
+    futures::stream::iter(planned.into_iter().map(Ok::<CfPlanned, String>))
+        .try_for_each_concurrent(PACK_PARALLEL, |p| async move {
+            match cf_download_cancellable(&p.file, &p.name, &p.dest, cancel).await {
+                Ok(_) => {}
+                Err(e) if e == CANCELLED => return Err(e),
+                Err(e) if p.required => return Err(format!("{} ({})", p.name, e)),
+                Err(_) => optional_failed.lock().unwrap_or_else(|e| e.into_inner()).push(p.name),
+            }
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            on_file(n, total);
+            Ok(())
+        })
+        .await?;
+    skipped.extend(optional_failed.lock().unwrap_or_else(|e| e.into_inner()).drain(..));
+    Ok(CfFetched { skipped })
+}
+
+#[derive(serde::Serialize)]
+pub struct CfHit { pub id: u32, pub name: String, pub summary: String, pub logo: String, pub downloads: u64, pub slug: String, pub website: String }
+
+pub async fn cf_search(
+    query: String, kind: String, game_version: String, loader: String, index: u32,
+    category: u32, sort: u32,
+) -> Result<Vec<CfHit>, String> {
+    // CurseForge caps pageSize at 50 and rejects index + pageSize > 10000.
+    let index = index.min(9950);
+    let mut q: Vec<(String, String)> = vec![
+        ("gameId".into(), "432".into()),
+        ("classId".into(), cf_class_id(&kind).to_string()),
+        ("pageSize".into(), "50".into()),
+        ("index".into(), index.to_string()),
+        ("sortField".into(), if sort == 0 { 2 } else { sort }.to_string()),
+        ("sortOrder".into(), "desc".into()),
+    ];
+    if category > 0 { q.push(("categoryId".into(), category.to_string())); }
+    if !query.is_empty() { q.push(("searchFilter".into(), query)); }
+    if !game_version.is_empty() && game_version != "любая" { q.push(("gameVersion".into(), game_version)); }
+    let lt = cf_loader_type(&loader);
+    if lt > 0 && kind == "mod" { q.push(("modLoaderType".into(), lt.to_string())); }
+    let resp: Value = cf_get("v1/mods/search", &q).await?;
+    let mut out = vec![];
+    for m in resp["data"].as_array().cloned().unwrap_or_default() {
+        out.push(CfHit {
+            id: m["id"].as_u64().unwrap_or(0) as u32,
+            name: m["name"].as_str().unwrap_or("").to_string(),
+            summary: m["summary"].as_str().unwrap_or("").to_string(),
+            logo: m["logo"]["thumbnailUrl"].as_str().or_else(|| m["logo"]["url"].as_str()).unwrap_or("").to_string(),
+            downloads: m["downloadCount"].as_u64().unwrap_or(0),
+            slug: m["slug"].as_str().unwrap_or("").to_string(),
+            website: m["links"]["websiteUrl"].as_str().unwrap_or("").to_string(),
+        });
+    }
+    Ok(out)
+}
+
+pub struct CfInstallReq {
+    pub mod_id: u32,
+    pub game_version: String,
+    pub profile: String,
+    pub kind: String,
+    pub file_id: Option<u64>,
+    /// Set only after the user confirmed content built for other versions.
+    pub allow_mismatch: bool,
+}
+
+pub async fn cf_install(app: AppHandle, req: CfInstallReq) -> Result<ContentInstall, String> {
+    let job = Job::start(
+        job_key_content("cf", &req.profile, &req.kind, &req.mod_id.to_string()),
+        format!("Файл #{}", req.mod_id),
+    )?;
+    let res = cf_install_job(&app, &job, req).await;
+    job.finish(&app, res)
+}
+
+pub(crate) async fn cf_files_for(mod_id: u32, game_version: &str, loader_type: u32) -> Result<Vec<Value>, String> {
+    let mut q: Vec<(String, String)> = vec![("pageSize".into(), "30".into())];
+    if !game_version.is_empty() { q.push(("gameVersion".into(), game_version.to_string())); }
+    if loader_type > 0 { q.push(("modLoaderType".into(), loader_type.to_string())); }
+    let files: Value = cf_get(&format!("v1/mods/{}/files", mod_id), &q).await?;
+    Ok(files["data"].as_array().cloned().unwrap_or_default())
+}
+
+pub(crate) fn cf_short_mc_versions(files: &[Value]) -> String {
+    let mut seen: Vec<String> = vec![];
+    for v in files.iter().flat_map(cf_file_mc_versions) {
+        if seen.len() >= 6 { break }
+        if !seen.contains(&v) { seen.push(v); }
+    }
+    seen.join(", ")
+}
+
+async fn cf_install_job(app: &AppHandle, job: &Job, req: CfInstallReq) -> Result<ContentInstall, String> {
+    let CfInstallReq { mod_id, game_version, profile, kind, file_id, allow_mismatch } = req;
+    job.emit(app, 10.0, "CurseForge: подбираем файл…");
+    let file = match file_id {
+        Some(fid) => {
+            let picked = cf_get(&format!("v1/mods/{}/files/{}", mod_id, fid), &[]).await?["data"].clone();
+            // A file picked by hand in the versions tab is not automatically a
+            // file for this build.
+            let ctx = ctx_of(&profile, &kind);
+            if !allow_mismatch && !cf_file_fits(&picked, &ctx.game_version, &ctx.loaders, &ctx.bridge) {
+                return Ok(ContentInstall {
+                    file: String::new(),
+                    mismatch: cf_file_target(&picked),
+                    warning: String::new(),
+                });
+            }
+            picked
+        }
+        None => {
+            let loader_id = load_profiles().into_iter().find(|p| p.name == profile).map(|p| p.loader_id()).unwrap_or_else(|| "vanilla".into());
+            let lt = if kind == "mod" { cf_loader_type(&loader_id) } else { 0 };
+            match cf_files_for(mod_id, &game_version, lt).await?.into_iter().next() {
+                Some(f) => f,
+                None => {
+                    let any = cf_files_for(mod_id, "", 0).await.unwrap_or_default();
+                    if !allow_mismatch {
+                        let have = cf_short_mc_versions(&any);
+                        return Ok(ContentInstall {
+                            file: String::new(),
+                            mismatch: if have.is_empty() { "другие версии".into() } else { have },
+                            warning: String::new(),
+                        });
+                    }
+                    any.into_iter().next().ok_or("У проекта нет ни одного файла на CurseForge")?
+                }
+            }
+        }
+    };
+    let file = &file;
+    let fname = safe_file_name(file["fileName"].as_str().ok_or("нет имени файла")?)?;
+    job.rename(&fname);
+    job.emit(app, 40.0, &format!("Скачиваем {}…", fname));
+    let fname = cf_install_file(&profile, &kind, mod_id, file).await?;
+    let mut warning = String::new();
+    if kind == "mod" {
+        job.emit(app, 75.0, "Зависимости…");
+        let ctx = ctx_of(&profile, &kind);
+        let missed = install_required(&ctx, cf_deps(file)).await;
+        if !missed.is_empty() {
+            warning = format!("не нашлось зависимостей под эту версию: {}", missed.join(", "));
+        }
+    }
+    job.emit(app, 100.0, "Установлено");
+    Ok(ContentInstall { file: fname, mismatch: String::new(), warning })
+}
+
+/// Downloads one CurseForge file into the profile and records it in the
+/// manifest. Split out of the install job so the dependency resolver installs
+/// CurseForge content through exactly the same path.
+pub(crate) async fn cf_install_file(profile: &str, kind: &str, mod_id: u32, file: &Value) -> Result<String, String> {
+    // remote-supplied file name: validate before it reaches a path
+    let fname = safe_file_name(file["fileName"].as_str().ok_or("нет имени файла")?)?;
+    let dest = safe_child(&profile_dir(profile).join(content_dir(kind)), &fname)?;
+    let sha1 = cf_sha1(file);
+    let dl = cf_download(file, &fname, &dest).await
+        .map_err(|e| format!("Не скачался файл с CurseForge: {}", e))?;
+    let (title, icon, summary) = match cf_get(&format!("v1/mods/{}", mod_id), &[]).await {
+        Ok(j) => (
+            j["data"]["name"].as_str().unwrap_or("").to_string(),
+            j["data"]["logo"]["thumbnailUrl"].as_str().unwrap_or("").to_string(),
+            j["data"]["summary"].as_str().unwrap_or("").to_string(),
+        ),
+        Err(_) => (String::new(), String::new(), String::new()),
+    };
+    manifest_upsert(profile, ContentEntry {
+        kind: kind.to_string(), file_name: fname.clone(),
+        project_id: format!("cf:{}", mod_id),
+        version_id: file["id"].as_u64().unwrap_or(0).to_string(),
+        version_number: file["displayName"].as_str().unwrap_or("").to_string(),
+        title, icon_url: icon, description: summary, author: String::new(),
+        download_url: dl, sha1, sha512: String::new(),
+        file_size: file["fileLength"].as_u64().unwrap_or(0),
+    });
+    Ok(fname)
+}
+
+// Maps install as a world folder in saves/, tracked in the manifest as kind = world.
+/// `gameVersions` also carries loader and "Server Pack" tags, so keep only
+/// digit-prefixed entries.
+fn cf_file_mc_versions(file: &Value) -> Vec<String> {
+    file["gameVersions"].as_array().map(|a| {
+        a.iter().filter_map(|v| v.as_str())
+            .filter(|s| s.starts_with(|c: char| c.is_ascii_digit()))
+            .map(String::from).collect()
+    }).unwrap_or_default()
+}
+
+/// Loader tags of a file, lowercased, from the same `gameVersions` list.
+pub(crate) fn cf_file_loaders(file: &Value) -> Vec<String> {
+    file["gameVersions"].as_array().map(|a| {
+        a.iter().filter_map(|v| v.as_str())
+            .map(|s| s.to_ascii_lowercase())
+            .filter(|s| ["forge", "neoforge", "fabric", "quilt"].contains(&s.as_str()))
+            .collect()
+    }).unwrap_or_default()
+}
+
+/// CurseForge counterpart of `fits_build`: can this build load this file. A file
+/// without loader tags (resource packs, and mods CurseForge never tagged) is
+/// judged by the game version alone.
+pub(crate) fn cf_file_fits(file: &Value, game_version: &str, loaders: &[String], bridge: &[String]) -> bool {
+    let gv_ok = game_version.is_empty() || cf_file_mc_versions(file).iter().any(|v| v == game_version);
+    let tags = cf_file_loaders(file);
+    let ld_ok = loaders.is_empty() || tags.is_empty()
+        || loaders.iter().chain(bridge.iter()).any(|l| tags.iter().any(|t| t == l));
+    gv_ok && ld_ok
+}
+
+/// What the file is built for, for the mismatch prompt.
+pub(crate) fn cf_file_target(file: &Value) -> String {
+    let games = cf_file_mc_versions(file);
+    let loaders = cf_file_loaders(file);
+    match (games.is_empty(), loaders.is_empty()) {
+        (true, true) => "другие версии".into(),
+        (false, true) => games.into_iter().take(3).collect::<Vec<_>>().join(", "),
+        (true, false) => loaders.join("/"),
+        (false, false) => format!("{} · {}", games.into_iter().take(3).collect::<Vec<_>>().join(", "), loaders.join("/")),
+    }
+}
+
+/// level.dat may sit at the archive root or a couple of levels deeper.
+fn find_world_root(dir: &Path, depth: u32) -> Option<PathBuf> {
+    if dir.join("level.dat").is_file() { return Some(dir.to_path_buf()); }
+    if depth == 0 { return None; }
+    let mut subs: Vec<PathBuf> = std::fs::read_dir(dir).ok()?
+        .flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    subs.sort();
+    subs.iter().find_map(|s| find_world_root(s, depth - 1))
+}
+
+fn world_folder_name(title: &str) -> String {
+    let cleaned: String = title.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { ' ' })
+        .collect();
+    let name: String = cleaned.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(48).collect();
+    let name = name.trim().to_string();
+    if name.is_empty() { "Карта".into() } else { name }
+}
+
+pub(crate) fn place_world_from_zip(saves: &Path, zip: &Path, work: &Path, title: &str) -> Result<String, String> {
+    let _ = std::fs::remove_dir_all(work);
+    std::fs::create_dir_all(work).map_err(|e| e.to_string())?;
+    unzip_to(zip, work)?;
+    let Some(root) = find_world_root(work, 3) else {
+        let _ = std::fs::remove_dir_all(work);
+        return Err("В архиве нет мира (level.dat) — на CurseForge лежит не карта".into());
+    };
+    std::fs::create_dir_all(saves).map_err(|e| e.to_string())?;
+    let base = world_folder_name(title);
+    let mut folder = base.clone();
+    let mut n = 2;
+    while saves.join(&folder).exists() {
+        folder = format!("{} {}", base, n);
+        n += 1;
+    }
+    let dest = safe_child(saves, &folder)?;
+    // rename fails across volumes
+    if std::fs::rename(&root, &dest).is_err() {
+        std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+        copy_dir_all(&root, &dest).map_err(|e| e.to_string())?;
+    }
+    let _ = std::fs::remove_dir_all(work);
+    Ok(folder)
+}
+
+/// Empty `folder` with non-empty `mismatch` means the map targets other game
+/// versions; the caller confirms and retries with `force`.
+#[derive(serde::Serialize)]
+pub struct WorldInstall { pub folder: String, pub mismatch: String }
+
+pub async fn cf_install_world(app: AppHandle, mod_id: u32, profile: String, force: bool) -> Result<WorldInstall, String> {
+    let job = Job::start(job_key_content("cf", &profile, "world", &mod_id.to_string()), format!("Карта #{}", mod_id))?;
+    let res = cf_install_world_job(&app, &job, mod_id, profile, force).await;
+    job.finish(&app, res)
+}
+
+async fn cf_install_world_job(app: &AppHandle, job: &Job, mod_id: u32, profile: String, force: bool) -> Result<WorldInstall, String> {
+    job.emit(app, 10.0, "CurseForge: подбираем файл карты…");
+    let prof = load_profiles().into_iter().find(|p| p.name == profile).ok_or("Сборка не найдена")?;
+    let files: Value = cf_get(&format!("v1/mods/{}/files", mod_id), &[("pageSize".to_string(), "50".to_string())]).await?;
+    let list = files["data"].as_array().cloned().unwrap_or_default();
+    if list.is_empty() { return Err("У карты нет файлов на CurseForge".into()); }
+    let file = match list.iter().find(|f| cf_file_mc_versions(f).contains(&prof.version)) {
+        Some(f) => f.clone(),
+        None => {
+            if !force {
+                let mut vs: Vec<String> = list.iter().flat_map(cf_file_mc_versions).collect();
+                vs.sort();
+                vs.dedup();
+                vs.truncate(8);
+                return Ok(WorldInstall { folder: String::new(), mismatch: vs.join(", ") });
+            }
+            list[0].clone()
+        }
+    };
+    let fid = file["id"].as_u64().unwrap_or(0);
+    let fname = safe_file_name(file["fileName"].as_str().ok_or("нет имени файла")?)?;
+    if !fname.to_ascii_lowercase().ends_with(".zip") {
+        return Err("Файл карты не в формате zip — поставь его вручную".into());
+    }
+    let sha1 = cf_sha1(&file);
+    let tmp = data_dir().join("tmp").join(format!("cfworld-{}-{}.zip", mod_id, fid));
+    job.rename(&fname);
+    job.emit(app, 35.0, &format!("Скачиваем {}…", fname));
+    let dl = cf_download_cancellable(&file, &fname, &tmp, Some(job.cancel_flag())).await
+        .map_err(|e| format!("Не скачалась карта: {}", e))?;
+    let ex = data_dir().join("tmp").join(format!("cfworld-{}", mod_id));
+    job.check()?;
+    job.emit(app, 65.0, "Распаковываем…");
+    let meta = cf_get(&format!("v1/mods/{}", mod_id), &[]).await.ok();
+    let title = meta.as_ref().and_then(|j| j["data"]["name"].as_str().map(String::from))
+        .unwrap_or_else(|| fname.trim_end_matches(".zip").to_string());
+    let icon = meta.as_ref().and_then(|j| j["data"]["logo"]["thumbnailUrl"].as_str().map(String::from)).unwrap_or_default();
+    let summary = meta.as_ref().and_then(|j| j["data"]["summary"].as_str().map(String::from)).unwrap_or_default();
+    let saves = profile_dir(&profile).join("saves");
+    job.emit(app, 85.0, "Переносим мир…");
+    let folder = place_world_from_zip(&saves, &tmp, &ex, &title)?;
+    let _ = std::fs::remove_file(&tmp);
+    manifest_upsert(&profile, ContentEntry {
+        kind: "world".into(), file_name: folder.clone(),
+        project_id: format!("cf:{}", mod_id),
+        version_id: fid.to_string(),
+        version_number: file["displayName"].as_str().unwrap_or("").to_string(),
+        title, icon_url: icon, description: summary, author: String::new(),
+        download_url: dl, sha1, sha512: String::new(),
+        file_size: file["fileLength"].as_u64().unwrap_or(0),
+    });
+    job.emit(app, 100.0, "Карта установлена");
+    Ok(WorldInstall { folder, mismatch: String::new() })
+}
+
+/// World folders can be removed outside the launcher, so cross-check with disk.
+pub fn list_world_installs(profile: &str) -> Vec<String> {
+    let saves = profile_dir(profile).join("saves");
+    load_content_manifest(profile).into_iter()
+        .filter(|e| e.kind == "world" && saves.join(&e.file_name).is_dir())
+        .map(|e| e.project_id)
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+#[derive(serde::Serialize)]
+pub struct CfProject {
+    pub id: u32,
+    pub name: String,
+    pub summary: String,
+    pub logo: String,
+    pub downloads: u64,
+    pub authors: String,
+    pub categories: Vec<String>,
+    pub game_versions: Vec<String>,
+    pub website: String,
+    pub updated: String,
+    /// Raw HTML, sanitized against a tag allowlist on the frontend.
+    pub description: String,
+    pub gallery: Vec<CfImage>,
+}
+
+#[derive(serde::Serialize)]
+pub struct CfImage { pub url: String, pub title: String }
+
+pub async fn cf_project(mod_id: u32) -> Result<CfProject, String> {
+    let j = cf_get(&format!("v1/mods/{}", mod_id), &[]).await?;
+    let d = &j["data"];
+    if d.is_null() { return Err("Проект не найден на CurseForge".into()) }
+    let str_list = |v: &Value, key: &str| -> Vec<String> {
+        v.as_array().map(|a| a.iter().filter_map(|x| x[key].as_str().map(String::from)).collect()).unwrap_or_default()
+    };
+    let description = cf_get(&format!("v1/mods/{}/description", mod_id), &[]).await
+        .ok().and_then(|j| j["data"].as_str().map(String::from)).unwrap_or_default();
+    let gallery: Vec<CfImage> = d["screenshots"].as_array().map(|a| a.iter().map(|s| CfImage {
+        url: s["url"].as_str().or_else(|| s["thumbnailUrl"].as_str()).unwrap_or("").to_string(),
+        title: s["title"].as_str().unwrap_or("").to_string(),
+    }).filter(|i| !i.url.is_empty()).collect()).unwrap_or_default();
+    let mut game_versions: Vec<String> = d["latestFilesIndexes"].as_array().map(|a| a.iter()
+        .filter_map(|x| x["gameVersion"].as_str().map(String::from)).collect()).unwrap_or_default();
+    game_versions.sort();
+    game_versions.dedup();
+    Ok(CfProject {
+        id: d["id"].as_u64().unwrap_or(mod_id as u64) as u32,
+        name: d["name"].as_str().unwrap_or("").to_string(),
+        summary: d["summary"].as_str().unwrap_or("").to_string(),
+        logo: d["logo"]["url"].as_str().or_else(|| d["logo"]["thumbnailUrl"].as_str()).unwrap_or("").to_string(),
+        downloads: d["downloadCount"].as_u64().unwrap_or(0),
+        authors: str_list(&d["authors"], "name").join(", "),
+        categories: str_list(&d["categories"], "name"),
+        game_versions,
+        website: d["links"]["websiteUrl"].as_str().unwrap_or("").to_string(),
+        updated: d["dateModified"].as_str().unwrap_or("").to_string(),
+        description,
+        gallery,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct CfFileInfo {
+    pub id: u64,
+    pub name: String,
+    pub file_name: String,
+    pub game_versions: Vec<String>,
+    pub loaders: Vec<String>,
+    pub size: u64,
+    pub date: String,
+    /// 1 release, 2 beta, 3 alpha
+    pub release: u8,
+    pub server_pack: bool,
+}
+
+pub async fn cf_files(mod_id: u32, game_version: String) -> Result<Vec<CfFileInfo>, String> {
+    let mut q: Vec<(String, String)> = vec![("pageSize".into(), "50".into())];
+    if !game_version.is_empty() && game_version != "любая" { q.push(("gameVersion".into(), game_version)); }
+    let j = cf_get(&format!("v1/mods/{}/files", mod_id), &q).await?;
+    Ok(j["data"].as_array().cloned().unwrap_or_default().iter().map(cf_file_info).collect())
+}
+
+fn cf_file_info(f: &Value) -> CfFileInfo {
+    let tags: Vec<String> = f["gameVersions"].as_array().map(|a| a.iter()
+        .filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+    let is_loader = |s: &String| {
+        let l = s.to_ascii_lowercase();
+        ["forge", "neoforge", "fabric", "quilt"].contains(&l.as_str())
+    };
+    CfFileInfo {
+        id: f["id"].as_u64().unwrap_or(0),
+        name: f["displayName"].as_str().unwrap_or("").to_string(),
+        file_name: f["fileName"].as_str().unwrap_or("").to_string(),
+        game_versions: tags.iter().filter(|s| s.starts_with(|c: char| c.is_ascii_digit())).cloned().collect(),
+        loaders: tags.iter().filter(|s| is_loader(s)).cloned().collect(),
+        size: f["fileLength"].as_u64().unwrap_or(0),
+        date: f["fileDate"].as_str().unwrap_or("").to_string(),
+        release: f["releaseType"].as_u64().unwrap_or(1) as u8,
+        server_pack: f["isServerPack"].as_bool().unwrap_or(false),
+    }
+}
+
+/// CurseForge modpack layout: pack zip → manifest.json (minecraft.version,
+/// modLoaders, files[{projectID,fileID}]) → every mod fetched via the CF API
+/// into mods/, then overrides/ copied over the profile.
+pub async fn cf_install_modpack(app: AppHandle, mod_id: u32, file_id: Option<u64>) -> Result<Profile, String> {
+    let job = Job::start(job_key_modpack_cf(mod_id), format!("Сборка #{}", mod_id))?;
+    let res = cf_install_modpack_job(&app, &job, mod_id, file_id).await;
+    job.finish(&app, res)
+}
+
+/// The first listed file is often a server pack, which has no manifest.json.
+fn pick_modpack_file(list: &[Value]) -> Option<Value> {
+    let client_only: Vec<&Value> = list.iter().filter(|f| {
+        let name = f["fileName"].as_str().unwrap_or("").to_ascii_lowercase();
+        !f["isServerPack"].as_bool().unwrap_or(false)
+            && f["serverPackFileId"].as_u64() != f["id"].as_u64()
+            && !name.contains("server")
+    }).collect();
+    let pool: &[&Value] = if client_only.is_empty() { return list.first().cloned() } else { &client_only };
+    pool.iter().find(|f| f["releaseType"].as_u64() == Some(1)).or_else(|| pool.first()).map(|f| (*f).clone())
+}
+
+/// A fresh CurseForge install gets its own build, like a Modrinth one:
+/// `modpack_profile_name` adds the pack version, then a counter.
+fn cf_pack_profile_name(man: &Value, taken: &dyn Fn(&str) -> bool) -> String {
+    let name = man["name"].as_str().filter(|n| !n.trim().is_empty()).unwrap_or("CurseForge Pack");
+    modpack_profile_name_with(name, man["version"].as_str().unwrap_or(""), taken)
+}
+
+async fn cf_install_modpack_job(app: &AppHandle, job: &Job, mod_id: u32, file_id: Option<u64>) -> Result<Profile, String> {
+    job.emit(app, 5.0, "CurseForge: читаем сборку…");
+    let file = match file_id {
+        Some(fid) => cf_get(&format!("v1/mods/{}/files/{}", mod_id, fid), &[]).await?["data"].clone(),
+        None => {
+            let files: Value = cf_get(&format!("v1/mods/{}/files", mod_id), &[("pageSize".to_string(), "30".to_string())]).await?;
+            pick_modpack_file(&files["data"].as_array().cloned().unwrap_or_default())
+                .ok_or("Файл сборки не найден")?
+        }
+    };
+    let file = &file;
+    let fid = file["id"].as_u64().unwrap_or(0);
+    let fname = safe_file_name(file["fileName"].as_str().unwrap_or("pack.zip"))?;
+    let tmp = data_dir().join("tmp").join(format!("cf-{}-{}.zip", mod_id, fid));
+    job.emit(app, 15.0, "Скачиваем сборку…");
+    let _ = std::fs::remove_file(&tmp);
+    cf_download_cancellable(file, &fname, &tmp, Some(job.cancel_flag())).await
+        .map_err(|e| format!("Не скачался архив сборки: {}", e))?;
+    job.check()?;
+    let ex = data_dir().join("tmp").join(format!("cf-{}", mod_id));
+    let _ = std::fs::remove_dir_all(&ex);
+    std::fs::create_dir_all(&ex).map_err(|e| e.to_string())?;
+    unzip_to(&tmp, &ex)?;
+    let man_raw = std::fs::read(ex.join("manifest.json"))
+        .map_err(|_| "В архиве нет manifest.json — CurseForge отдал не клиентскую сборку".to_string())?;
+    let man: Value = serde_json::from_slice(&man_raw).map_err(|e| e.to_string())?;
+    let mc = man["minecraft"]["version"].as_str().ok_or("Нет версии MC в манифесте")?.to_string();
+    let loader_full = man["minecraft"]["modLoaders"].as_array()
+        .and_then(|a| a.iter().find(|m| m["primary"] == true).or_else(|| a.first()))
+        .and_then(|m| m["id"].as_str()).unwrap_or("").to_string();
+    let (lid, loader_version) = split_loader_id(&loader_full);
+    // Версии из чужого манифеста уходят в пути и в командную строку игры.
+    check_version_id(&mc)?;
+    if let Some(v) = loader_version.as_deref() {
+        check_loader_version(v)?;
+    }
+    // Имя из манифеста — только основа: пак «Survival» не должен лечь на уже
+    // установленную сборку с тем же именем (стёр бы её mods/ и затёр saves/).
+    let pname = cf_pack_profile_name(&man, &profile_name_taken);
+    job.rename(&pname);
+    let pdir = profile_dir(&pname);
+    // the pack owns mods/: leftovers from a previous install would duplicate mods
+    let _ = std::fs::remove_dir_all(pdir.join("mods"));
+    forget_skin_mod_install(&pname);
+    std::fs::create_dir_all(pdir.join("mods")).map_err(|e| e.to_string())?;
+    let list = man["files"].as_array().cloned().unwrap_or_default();
+    job.emit(app, 20.0, &format!("Моды 0/{}", list.len()));
+    let fetched = cf_fetch_manifest_files(&list, &pdir.join("mods"), Some(job.cancel_flag()), &|n, total| {
+        job.emit(app, 20.0 + 55.0 * (n as f32 / total.max(1) as f32), &format!("Моды {}/{}", n, total));
+    })
+    .await;
+    let skipped = match fetched {
+        Ok(f) => f.skipped,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&ex);
+            return Err(if e == CANCELLED { e } else { format!("Не скачались файлы сборки: {}", e) });
+        }
+    };
+    // the overrides folder name comes from the archive manifest, hence the path check
+    job.emit(app, 80.0, "Конфиги и ресурсы сборки…");
+    for name in [man["overrides"].as_str().filter(|s| !s.is_empty()).unwrap_or("overrides"), "client-overrides"] {
+        let ov = safe_join(&ex, name)
+            .map_err(|e| format!("Манифест сборки указывает небезопасную папку overrides: {}", e))?;
+        // Служебные файлы лаунчера (copper-args.txt, copper-settings.json…)
+        // из архива не принимаются: copy_overrides их пропускает.
+        if ov.exists() { copy_overrides(&ov, &pdir).map_err(|e| e.to_string())?; }
+    }
+    let _ = std::fs::remove_file(&tmp);
+    let _ = std::fs::remove_dir_all(&ex);
+    let fabric = matches!(lid.as_str(), "fabric" | "quilt");
+    let pack_icon = cf_get(&format!("v1/mods/{}", mod_id), &[]).await.ok()
+        .and_then(|j| j["data"]["logo"]["thumbnailUrl"].as_str().map(String::from))
+        .unwrap_or_default();
+    let prof = Profile {
+        name: pname.clone(),
+        version: mc,
+        fabric,
+        loader: Some(lid),
+        loader_version,
+        icon: if pack_icon.is_empty() { None } else { Some(pack_icon) },
+    };
+    let mut all = load_profiles();
+    if let Some(p) = all.iter_mut().find(|p| p.name == prof.name) { *p = prof.clone(); }
+    else { all.insert(0, prof.clone()); }
+    save_profiles(&all)?;
+    let mut patch = serde_json::Map::new();
+    patch.insert("cfModpackId".into(), Value::from(mod_id));
+    patch.insert("cfModpackFileId".into(), Value::from(fid));
+    merge_settings(&pname, patch);
+    let done_msg = if skipped.is_empty() { "Сборка установлена".to_string() }
+        else { format!("Сборка установлена, пропущено необязательных файлов: {}", skipped.len()) };
+    job.emit(app, 100.0, &done_msg);
+    Ok(prof)
+}
+
+/// Identifies local files by their CurseForge fingerprint. The endpoint is a
+/// POST, so it goes through the backend proxy (the API key stays server-side)
+/// with the public mirror as the fallback, exactly like the GET path.
+pub(crate) async fn cf_by_fingerprint(prints: &[u32]) -> Vec<Value> {
+    if prints.is_empty() {
+        return vec![];
+    }
+    let body = serde_json::json!({ "fingerprints": prints });
+    let mut out = vec![];
+    for url in cf_post_urls("fingerprints", "v1/fingerprints") {
+        let res = client().post(&url).json(&body).send().await;
+        cf_note_post(&url, &res);
+        let Ok(res) = res else { continue };
+        if !res.status().is_success() {
+            continue;
+        }
+        let Ok(j) = res.json::<Value>().await else { continue };
+        let matches = j["data"]["exactMatches"].as_array().cloned().unwrap_or_default();
+        if !matches.is_empty() {
+            out = matches;
+            break;
+        }
+        // An answer with no matches is still an answer: the files are simply
+        // not CurseForge's, and asking the mirror the same question changes
+        // nothing.
+        if j.get("data").is_some() {
+            break;
+        }
+    }
+    out
+}
+
+/// Name, icon and summary of several projects at once — the scan needs them for
+/// every file it just recognised.
+pub(crate) async fn cf_projects(ids: &[u32]) -> std::collections::HashMap<u32, Value> {
+    let mut out = std::collections::HashMap::new();
+    for id in ids.iter().take(60) {
+        if let Ok(j) = cf_get(&format!("v1/mods/{}", id), &[]).await {
+            out.insert(*id, j["data"].clone());
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join("copper-world-test").join(name);
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    /// CORE-2: пак CurseForge с именем уже установленной сборки ставился
+    /// поверх неё — стирал mods/ и затирал saves/. Теперь, как у Modrinth,
+    /// рядом: сначала с версией пака, потом со счётчиком.
+    #[test]
+    fn a_curseforge_pack_never_lands_on_an_existing_build() {
+        let man = serde_json::json!({ "name": "Survival", "version": "1.4" });
+        let none = |_: &str| false;
+        assert_eq!(cf_pack_profile_name(&man, &none), "Survival");
+
+        let survival = |n: &str| n == "Survival";
+        assert_eq!(cf_pack_profile_name(&man, &survival), "Survival 1.4");
+
+        let both = |n: &str| n == "Survival" || n == "Survival 1.4";
+        assert_eq!(cf_pack_profile_name(&man, &both), "Survival 1.4 (2)");
+
+        let unversioned = serde_json::json!({ "name": "Survival" });
+        assert_eq!(cf_pack_profile_name(&unversioned, &survival), "Survival (2)");
+
+        let nameless = serde_json::json!({ "name": "  " });
+        assert_eq!(cf_pack_profile_name(&nameless, &none), "CurseForge Pack");
+    }
+
+    /// вход -> вердикт. Файл, выбранный руками во вкладке «Версии», ставился
+    /// как есть: Fabric-jar попадал в Forge-сборку и игра не запускалась.
+    #[test]
+    fn a_hand_picked_file_is_still_judged_by_the_build() {
+        let forge = vec!["forge".to_string()];
+        let fabric_file = serde_json::json!({ "gameVersions": ["1.20.1", "Fabric"] });
+        let forge_file = serde_json::json!({ "gameVersions": ["1.20.1", "Forge"] });
+        let old_forge = serde_json::json!({ "gameVersions": ["1.19.2", "Forge"] });
+        let untagged = serde_json::json!({ "gameVersions": ["1.20.1"] });
+
+        assert!(!cf_file_fits(&fabric_file, "1.20.1", &forge, &[]),
+            "Fabric-файл не должен попадать в Forge-сборку");
+        assert!(cf_file_fits(&forge_file, "1.20.1", &forge, &[]));
+        assert!(!cf_file_fits(&old_forge, "1.20.1", &forge, &[]),
+            "файл под другую версию игры так же ломает запуск");
+        assert!(cf_file_fits(&untagged, "1.20.1", &forge, &[]),
+            "файл без пометки загрузчика судим только по версии игры");
+        assert!(cf_file_fits(&fabric_file, "1.20.1", &forge, &["fabric".to_string()]),
+            "со Sinytra Connector Fabric-файл сборке подходит");
+        assert_eq!(cf_file_target(&fabric_file), "1.20.1 · fabric");
+    }
+
+    #[test]
+    fn takes_only_game_versions_from_file() {
+        let f = serde_json::json!({ "gameVersions": ["1.20.1", "Forge", "1.12.2", "Server Pack"] });
+        assert_eq!(cf_file_mc_versions(&f), vec!["1.20.1".to_string(), "1.12.2".to_string()]);
+    }
+
+    #[test]
+    fn finds_world_in_root_and_deeper() {
+        let root = tmp("root");
+        std::fs::write(root.join("level.dat"), b"x").unwrap();
+        assert_eq!(find_world_root(&root, 3).unwrap(), root);
+
+        let nested = tmp("nested");
+        let inner = nested.join("Cool Map").join("World");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(inner.join("level.dat"), b"x").unwrap();
+        assert_eq!(find_world_root(&nested, 3).unwrap(), inner);
+    }
+
+    #[test]
+    fn no_level_dat_is_not_a_world() {
+        let d = tmp("plain");
+        std::fs::write(d.join("pack.mcmeta"), b"{}").unwrap();
+        assert!(find_world_root(&d, 3).is_none());
+    }
+
+    fn make_map_zip(path: &PathBuf) {
+        let f = std::fs::File::create(path).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default();
+        for (name, body) in [
+            ("Cool Map v2/README.txt", "читай меня"),
+            ("Cool Map v2/World/level.dat", "NBT"),
+            ("Cool Map v2/World/region/r.0.0.mca", "чанки"),
+        ] {
+            z.start_file(name, opts).unwrap();
+            std::io::Write::write_all(&mut z, body.as_bytes()).unwrap();
+        }
+        z.finish().unwrap();
+    }
+
+    #[test]
+    fn unpacks_map_into_saves_and_keeps_the_old_one() {
+        let root = tmp("place");
+        let zip_path = root.join("map.zip");
+        make_map_zip(&zip_path);
+        let saves = root.join("saves");
+
+        let first = place_world_from_zip(&saves, &zip_path, &root.join("work"), "Cool Map: v2").unwrap();
+        assert_eq!(first, "Cool Map v2");
+        assert!(saves.join(&first).join("level.dat").is_file());
+        assert!(saves.join(&first).join("region").join("r.0.0.mca").is_file());
+        assert!(!saves.join(&first).join("README.txt").exists());
+        assert!(!root.join("work").exists());
+
+        let second = place_world_from_zip(&saves, &zip_path, &root.join("work"), "Cool Map: v2").unwrap();
+        assert_eq!(second, "Cool Map v2 2");
+        assert!(saves.join(&first).join("level.dat").is_file());
+    }
+
+    #[test]
+    fn rejects_archive_without_world() {
+        let root = tmp("noworld");
+        let zip_path = root.join("pack.zip");
+        let f = std::fs::File::create(&zip_path).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default();
+        z.start_file("assets/pack.mcmeta", opts).unwrap();
+        std::io::Write::write_all(&mut z, b"{}").unwrap();
+        z.finish().unwrap();
+        assert!(place_world_from_zip(&root.join("saves"), &zip_path, &root.join("work"), "Pack").is_err());
+    }
+
+    #[test]
+    fn modpack_file_skips_server_packs() {
+        let list = vec![
+            serde_json::json!({ "id": 1, "fileName": "Pack-Server-1.2.zip", "isServerPack": true, "releaseType": 1 }),
+            serde_json::json!({ "id": 2, "fileName": "Pack-1.3-beta.zip", "releaseType": 2 }),
+            serde_json::json!({ "id": 3, "fileName": "Pack-1.2.zip", "releaseType": 1 }),
+        ];
+        assert_eq!(pick_modpack_file(&list).unwrap()["id"], 3);
+    }
+
+    #[test]
+    fn modpack_file_falls_back_to_first() {
+        let list = vec![serde_json::json!({ "id": 7, "fileName": "server-pack.zip", "isServerPack": true })];
+        assert_eq!(pick_modpack_file(&list).unwrap()["id"], 7);
+        assert!(pick_modpack_file(&[]).is_none());
+    }
+
+    #[test]
+    fn file_urls_add_cdn_mirrors_with_encoded_name() {
+        let f = serde_json::json!({ "id": 4567890, "downloadUrl": "https://edge.forgecdn.net/files/4567/890/A%20Mod.jar" });
+        let urls = cf_file_urls(&f, "A Mod.jar");
+        assert_eq!(urls[0], "https://edge.forgecdn.net/files/4567/890/A%20Mod.jar");
+        assert!(urls.iter().any(|u| u.starts_with("https://mediafilez.forgecdn.net/files/4567/890/A%20Mod.jar")));
+        let evil = serde_json::json!({ "id": 4567890, "downloadUrl": "https://evil.example/files/A%20Mod.jar" });
+        let urls_evil = cf_file_urls(&evil, "A Mod.jar");
+        assert!(urls_evil.iter().all(|u| u.contains(".forgecdn.net/")), "чужой хост в downloadUrl отбрасывается: {urls_evil:?}");
+        let fake = serde_json::json!({ "id": 4567890, "downloadUrl": "https://forgecdn.net.evil.example/x.jar" });
+        assert!(cf_file_urls(&fake, "x.jar").iter().all(|u| !u.contains("evil")));
+        let bare = serde_json::json!({ "id": 4567890, "downloadUrl": Value::Null });
+        assert_eq!(cf_file_urls(&bare, "A Mod.jar").len(), 2);
+    }
+
+    #[test]
+    fn folder_name_survives_curseforge_titles() {
+        assert_eq!(world_folder_name("Diversity 2"), "Diversity 2");
+        assert_eq!(world_folder_name("SCP: Blocktainment / Breach"), "SCP Blocktainment Breach");
+        assert_eq!(world_folder_name("???"), "Карта");
+        assert!(world_folder_name(&"я".repeat(200)).chars().count() <= 48);
+    }
+}

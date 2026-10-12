@@ -1,0 +1,126 @@
+import { useEffect, useState } from 'react'
+import { hasTauri } from '../ipc/tauri'
+import { headAvatar } from '../ipc/commands'
+
+const OFFLINE_NICK = 'MHF_Steve'
+
+const mem = new Map<string, string>()
+const inflight = new Map<string, Promise<string | null>>()
+const RETRY_MS = 60_000
+const failedAt = new Map<string, number>()
+
+/**
+ * A face is 8x8 skin pixels, so a head only stays sharp when its size is a
+ * multiple of 8: at any other size one skin pixel covers 5 screen pixels and
+ * its neighbour covers 6, which reads as a torn, crooked face.
+ */
+const HEAD_CELLS = 8
+const HEAD_MAX = 512
+
+/** Render size for a box of `box` CSS pixels: doubled for HiDPI, snapped to the grid. */
+export const headPx = (box: number): number =>
+  Math.min(HEAD_MAX, Math.max(HEAD_CELLS, Math.round((box * 2) / HEAD_CELLS) * HEAD_CELLS))
+
+const norm = (nick?: string): string => (nick || '').trim().toLowerCase()
+
+const cacheKey = (nick: string, px: number): string => `${norm(nick)}@${px}`
+
+export const headNick = (nick?: string, kind?: string): string =>
+  kind === 'offline' || !norm(nick) ? OFFLINE_NICK : (nick as string).trim()
+
+export const cachedHead = (nick?: string, kind?: string, px = headPx(32)): string | null =>
+  mem.get(cacheKey(headNick(nick, kind), px)) || null
+
+export function loadHead(nick?: string, kind?: string, px = headPx(32)): Promise<string | null> {
+  const real = headNick(nick, kind)
+  const key = cacheKey(real, px)
+  const hit = mem.get(key)
+  if (hit) return Promise.resolve(hit)
+  const failed = failedAt.get(key)
+  if (failed && Date.now() - failed < RETRY_MS) return Promise.resolve(null)
+  const running = inflight.get(key)
+  if (running) return running
+  const task = (
+    hasTauri()
+      ? headAvatar(real, px)
+      : Promise.resolve(
+          'copper-disabled://removed-service/v2/heads/avatar/' + encodeURIComponent(real) + '?size=' + px,
+        )
+  )
+    .then((url) => {
+      mem.set(key, url)
+      return url
+    })
+    .catch(() => {
+      failedAt.set(key, Date.now())
+      return null
+    })
+    .finally(() => inflight.delete(key))
+  inflight.set(key, task)
+  return task
+}
+
+export function warmHeads(nicks: (string | undefined)[]): void {
+  for (const nick of nicks.slice(0, 60)) if (norm(nick)) void loadHead(nick)
+}
+
+/// Сколько раз голова пробуется заново, если первая попытка не удалась. На
+/// холодном старте сеть и сессия готовы не сразу: одна неудача помечала ник как
+/// нерабочий, и вместо лица до перезапуска лаунчера висела буква.
+const HEAD_TRIES = 3
+
+/**
+ * Заглушка, пока голова грузится или у ника нет скина: лицо Стива 8×8, как в
+ * самой игре. Буква на цветном квадрате выглядела чужеродно в лаунчере Minecraft
+ * (правка владельца 23.09.2026).
+ */
+const STEVE_ROWS = ['HHHHHHHH', 'HHHHHHHH', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSMMMMSS', 'SSSSSSSS']
+const STEVE_COLORS: Record<string, string> = { H: '#2f200d', S: '#b8866a', W: '#ffffff', E: '#4a3a86', N: '#8a5845', M: '#6a3a2a' }
+let steveCache = ''
+function steveFace(): string {
+  if (steveCache) return steveCache
+  let rects = ''
+  STEVE_ROWS.forEach((row, y) =>
+    [...row].forEach((c, x) => {
+      rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + STEVE_COLORS[c] + '"/>'
+    }),
+  )
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">' + rects + '</svg>'
+  steveCache = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
+  return steveCache
+}
+
+export function useHead(nick?: string, size = 32, override?: string | null): string {
+  const px = headPx(size)
+  const [src, setSrc] = useState<string>(
+    () => override || cachedHead(nick, undefined, px) || steveFace(),
+  )
+  useEffect(() => {
+    if (override) {
+      setSrc(override)
+      return
+    }
+    const hit = cachedHead(nick, undefined, px)
+    setSrc(hit || steveFace())
+    if (hit) return
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const attempt = (left: number) => {
+      void loadHead(nick, undefined, px).then((url) => {
+        if (!alive) return
+        if (url) {
+          setSrc(url)
+          return
+        }
+        if (left <= 1) return
+        timer = setTimeout(() => attempt(left - 1), RETRY_MS + 250)
+      })
+    }
+    attempt(HEAD_TRIES)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [nick, size, px, override])
+  return src
+}

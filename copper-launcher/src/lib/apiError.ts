@@ -1,0 +1,99 @@
+import { offPlatformReason } from './offPlatform'
+
+/// Разбор один на весь лаунчер: раньше каждый экран решал сам, и «не нашли
+/// такого ника» доезжало до игрока как «войди в аккаунт» — человек шёл
+/// проверять вход вместо того, чтобы поправить ник. Голый код («http 429»,
+/// «Too Many Requests») не говорит ни что случилось, ни что делать дальше.
+const STATUS_TEXT: Record<number, string> = {
+  400: 'Запрос не принят — проверь введённые данные',
+  401: 'Сессия Copper закончилась — войди в аккаунт заново',
+  402: 'Не хватает средств на балансе — пополни счёт и повтори',
+  403: 'Copper отказала в этом действии',
+  404: 'Не найдено — возможно, это уже удалено',
+  405: 'Действие недоступно — обнови лаунчер и повтори',
+  408: 'Сервер не ответил вовремя — повтори попытку',
+  409: 'Занято — выбери другое значение',
+  410: 'Ссылка устарела — запроси новую',
+  413: 'Файл слишком большой — уменьши размер и повтори',
+  415: 'Такой формат файла не поддерживается',
+  422: 'Данные заполнены неверно — проверь поля',
+  423: 'Действие временно заблокировано — повтори позже',
+  500: 'Сбой на стороне Copper — повтори через минуту',
+  502: 'Copper временно недоступна — повтори через минуту',
+  503: 'Copper перегружена или обновляется — повтори через минуту',
+  504: 'Copper не успела ответить — повтори через минуту',
+}
+
+const RATE_LIMIT_TEXT = 'Слишком много попыток подряд — подожди немного и повтори'
+
+const NOISE = [
+  /^throttlerexception/i,
+  /^too many requests$/i,
+  /^unauthorized$/i,
+  /^forbidden$/i,
+  /^not found$/i,
+  /^bad request$/i,
+  /^internal server error$/i,
+  /^service unavailable$/i,
+  /^error$/i,
+]
+
+const OFFLINE =
+  /нет связи|error sending request|os error 11001|os error 10051|failed to fetch|dns error|connection refused|connection reset/i
+
+const TIMEOUT = /operation timed out|timed out|deadline has elapsed/i
+
+function statusOf(raw: string): number {
+  const match = /\bhttp (\d{3})\b/i.exec(raw)
+  return match ? Number(match[1]) : 0
+}
+
+export function isTransientApiError(e: unknown): boolean {
+  const raw = String((e as { message?: string } | null)?.message ?? e ?? '').trim()
+  if (OFFLINE.test(raw) || TIMEOUT.test(raw)) return true
+  const status = statusOf(raw)
+  return status === 429 || status >= 500 || /^too many requests$/i.test(raw) || /^throttlerexception/i.test(raw)
+}
+
+/// Сбой кода, а не ответ службы: «Cannot read properties of undefined» игроку
+/// ничего не говорит, ему нужен запасной текст экрана.
+const CODE_FAULT =
+  /cannot read propert|cannot set propert|is not a function|is not defined|is not iterable|is not an object|undefined is not|null is not|unexpected token|unexpected end of json|is not valid json|maximum call stack/i
+
+function isCodeFault(e: unknown, raw: string): boolean {
+  if (e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError) {
+    // fetch падает TypeError'ом при обрыве связи — это не сбой кода.
+    return !OFFLINE.test(raw)
+  }
+  return CODE_FAULT.test(raw)
+}
+
+export function apiErrorText(e: unknown, fallback: string): string {
+  const raw = String((e as { message?: string } | null)?.message ?? e ?? '')
+    .replace(/^Error:\s*/, '')
+    .trim()
+  const held = offPlatformReason(e)
+  if (held) return held
+  if (!raw) return fallback
+
+  if (OFFLINE.test(raw)) return 'Нет связи с Copper — проверь интернет и повтори'
+  if (TIMEOUT.test(raw)) return 'Copper не ответила вовремя — повтори попытку'
+  if (isCodeFault(e, raw)) return fallback
+
+  const status = statusOf(raw)
+  if (status === 429 || /^too many requests$/i.test(raw) || /^throttlerexception/i.test(raw)) {
+    return RATE_LIMIT_TEXT
+  }
+  if (/^unauthorized$/i.test(raw)) return STATUS_TEXT[401]
+
+  const bare = /^http \d{3}$/i.test(raw) || NOISE.some((pattern) => pattern.test(raw))
+  if (!bare) return raw
+
+  if (status) {
+    const known = STATUS_TEXT[status]
+    if (known) return known
+    if (status >= 500) return STATUS_TEXT[500]
+    return fallback + ' (http ' + status + ')'
+  }
+  return fallback
+}

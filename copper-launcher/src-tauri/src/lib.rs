@@ -1,0 +1,760 @@
+use tauri::Manager;
+
+pub mod engine;
+mod app_icon;
+mod discord;
+mod secrets;
+mod commands;
+pub mod tray;
+
+mod mic;
+mod packdrop;
+mod display;
+mod webview_health;
+mod uiwatch;
+mod navguard;
+
+/// Directories the webview may read through `asset://`: the media files it
+/// plays and shows, nothing else. The token
+/// vault (`secrets.bin`, `vault.key`) sits directly under `data_dir()` and
+/// imported files land in `game_root()/profiles/...`, so neither root may ever
+/// be granted — an XSS would read the vault and any copied file straight out of
+/// the scope. Skins, capes and head avatars need no grant at all: they reach
+/// the UI as data URLs. Screenshots are granted per file when the webview asks
+/// for the list (see `commands::profiles::list_screenshots`).
+pub fn asset_dirs() -> Vec<std::path::PathBuf> {
+    let data = engine::data_dir();
+    vec![data.join("wallpaper")]
+}
+
+/// Выход начат: цикл событий вот-вот закроется. После этого ни одно окно не
+/// создаётся и не трогается, и в главный поток ничего не отправляется — tao на
+/// Windows падает «cannot move state from Destroyed», получив событие после
+/// разрушения цикла (1105 отчётов), и «subclass_result.as_bool()», создавая окно
+/// на выходе (22).
+static EXITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn exiting() -> bool {
+    EXITING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub(crate) fn mark_exiting() {
+    EXITING.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn on_run_event(app: &tauri::AppHandle, event: &tauri::RunEvent) {
+    match event {
+        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => mark_exiting(),
+        // macOS never starts a second copy on a Dock or Finder click: it only
+        // tells the running one to reopen. has_visible_windows is not checked
+        // because the overlay counts as visible while the launcher is in the tray.
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => tray::show_main(app),
+        // Главное окно закрыто, а скрытый оверлей ещё жив: Tauri не считает это
+        // «все окна закрыты», и процесс оставался висеть без окна. Значок в трее
+        // и второй запуск (single-instance) звали show_main у окна, которого нет,
+        // — лаунчер «не открывался» до перезагрузки.
+        tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. }
+            if label == "main" && !exiting() =>
+        {
+            mark_exiting();
+            app.exit(0);
+        }
+        _ => {}
+    }
+}
+
+pub fn allow_assets(app: &tauri::AppHandle) {
+    let scope = app.asset_protocol_scope();
+    for dir in asset_dirs() {
+        std::fs::create_dir_all(&dir).ok();
+        let _ = scope.allow_directory(&dir, true);
+    }
+}
+
+/// WebKitGTK's DMA-BUF renderer paints nothing on the proprietary NVIDIA driver
+/// and in the AppImage's bundled WebKit on a newer host Mesa, so the window
+/// stays a blank grey rectangle. Everywhere else it is the fast path: the
+/// fallback copies every frame through shared memory and the whole UI lags.
+#[cfg(any(target_os = "linux", test))]
+fn needs_dmabuf_off(appimage: bool, nvidia_driver: bool) -> bool {
+    appimage || nvidia_driver
+}
+
+#[cfg(target_os = "linux")]
+fn nvidia_driver_loaded() -> bool {
+    std::path::Path::new("/sys/module/nvidia").exists() || std::path::Path::new("/proc/driver/nvidia/version").exists()
+}
+
+#[cfg(target_os = "linux")]
+fn avoid_webkit_dmabuf_renderer() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    if std::env::var_os(VAR).is_none() && needs_dmabuf_off(std::env::var_os("APPIMAGE").is_some(), nvidia_driver_loaded()) {
+        std::env::set_var(VAR, "1");
+    }
+}
+
+/// NVIDIA under native Wayland ends the WebKitGTK window with "Error 71" when
+/// explicit sync is on; turning it off keeps the GPU path, unlike the WebKit
+/// fallbacks below.
+#[cfg(any(target_os = "linux", test))]
+fn needs_nv_explicit_sync_off(nvidia_driver: bool, wayland_display: Option<&str>) -> bool {
+    nvidia_driver && wayland_display.is_some_and(|d| !d.is_empty())
+}
+
+#[cfg(target_os = "linux")]
+fn avoid_nvidia_explicit_sync() {
+    const VAR: &str = "__NV_DISABLE_EXPLICIT_SYNC";
+    let wayland = std::env::var("WAYLAND_DISPLAY").ok();
+    if std::env::var_os(VAR).is_none() && needs_nv_explicit_sync_off(nvidia_driver_loaded(), wayland.as_deref()) {
+        std::env::set_var(VAR, "1");
+    }
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug, PartialEq, Eq)]
+enum AppImageWaylandFix {
+    None,
+    XWayland,
+    SoftwareCompositing,
+}
+
+/// The AppImage carries WebKitGTK and libwayland from Ubuntu 22.04. Under a
+/// native Wayland session on a newer host Mesa (Arch, CachyOS, Hyprland) its
+/// accelerated compositing presents nothing and the window stays black even
+/// with DMA-BUF off. XWayland renders it with GPU compositing intact, so the
+/// window moves there whenever an X server is reachable; software compositing
+/// renders every frame on the CPU and lags, so it is only the last resort.
+#[cfg(any(target_os = "linux", test))]
+fn appimage_wayland_fix(appimage: bool, wayland_display: Option<&str>, x_display: Option<&str>, gdk_backend: Option<&str>) -> AppImageWaylandFix {
+    let wayland = wayland_display.is_some_and(|d| !d.is_empty());
+    let has_x = x_display.is_some_and(|d| !d.trim().is_empty());
+    let backend = gdk_backend.map(str::trim).filter(|b| !b.is_empty());
+    if !appimage || !wayland || backend.is_some_and(|b| b.starts_with("x11")) {
+        return AppImageWaylandFix::None;
+    }
+    if backend.is_none() && has_x {
+        return AppImageWaylandFix::XWayland;
+    }
+    AppImageWaylandFix::SoftwareCompositing
+}
+
+#[cfg(target_os = "linux")]
+fn avoid_webkit_compositing_on_appimage_wayland() {
+    const VAR: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
+    if std::env::var_os(VAR).is_some() {
+        return;
+    }
+    let wayland = std::env::var("WAYLAND_DISPLAY").ok();
+    let x_display = std::env::var("DISPLAY").ok();
+    let backend = std::env::var("GDK_BACKEND").ok();
+    match appimage_wayland_fix(std::env::var_os("APPIMAGE").is_some(), wayland.as_deref(), x_display.as_deref(), backend.as_deref()) {
+        AppImageWaylandFix::None => {}
+        AppImageWaylandFix::XWayland => std::env::set_var("GDK_BACKEND", "x11"),
+        AppImageWaylandFix::SoftwareCompositing => std::env::set_var(VAR, "1"),
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        avoid_nvidia_explicit_sync();
+        avoid_webkit_dmabuf_renderer();
+        avoid_webkit_compositing_on_appimage_wayland();
+    }
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            tray::show_main(app);
+        }))
+        .plugin(navguard::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Запуск вместе с системой (06.10.2026): лаунчер живёт в трее, и
+        // напоминания о сундуке и серии есть кому показать.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![commands::system::AUTOSTART_ARG]),
+        ))
+        .setup(|app| {
+            #[cfg(debug_assertions)]
+            app_icon::apply_from_env(app.handle());
+            // Portable builds never run an installer, so the deep link scheme is
+            // registered at startup as well.
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = app.deep_link().register_all();
+            }
+            engine::install_panic_hook(env!("CARGO_PKG_VERSION").to_string());
+            allow_assets(app.handle());
+            tray::init(app.handle());
+            // Запущен системой при входе: сразу в трей, окно не выскакивает.
+            if commands::system::started_by_os() && tray::available() {
+                tray::hide_main(app.handle());
+            }
+            // Official self-reinstallation is disabled for this telemetry-free fork.
+            engine::arm_dialogs(app.handle());
+            if let Some(w) = app.get_webview_window("main") {
+                mic::allow_microphone(&w);
+                webview_health::watch(&w);
+            }
+            packdrop::watch(app.handle());
+            display::watch(app.handle());
+            uiwatch::watch(app.handle());
+            // Автотест — только в отладочной сборке (аудит 24.09.2026, S-04).
+            #[cfg(debug_assertions)]
+            if let Ok(mode) = std::env::var("COPPER_AUTOTEST") {
+                let h = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let existing = std::env::var("COPPER_AUTOTEST_PROFILE").ok()
+                        .and_then(|n| engine::load_profiles().into_iter().find(|p| p.name == n));
+                    let (name, version) = match existing {
+                        Some(p) => (p.name.clone(), p.version.clone()),
+                        None => {
+                            let loader = if mode == "1" { "vanilla".to_string() } else { mode.clone() };
+                            let name = format!("test-{}", loader);
+                            let version = std::env::var("COPPER_AUTOTEST_VERSION").unwrap_or_else(|_| "1.21.4".into());
+                            let mut all = engine::load_profiles();
+                            all.retain(|p| p.name != name);
+                            all.insert(0, engine::Profile{ name: name.clone(), version: version.clone(), fabric: loader=="fabric", loader: Some(loader.clone()), loader_version: None, icon: None });
+                            let _ = engine::save_profiles(&all);
+                            (name, version)
+                        }
+                    };
+                    let started = std::time::Instant::now();
+                    let run = engine::install_and_launch_in(h, version, "Grash".into(), false, 0, name, engine::Auth::default());
+                    match engine::begin_launch().run(run).await {
+                        Ok(_) => eprintln!("[AUTOTEST] OK: game started in {} ms", started.elapsed().as_millis()),
+                        Err(e) => eprintln!("[AUTOTEST] FAIL: {}", e),
+                    }
+                });
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::content::core_version,
+            commands::system::app_version,
+            commands::system::autostart_state,
+            commands::system::autostart_set,
+            app_icon::set_app_icon,
+            commands::system::device_specs,
+            webview_health::take_webview_failure,
+            webview_health::set_webview_low_memory,
+            commands::system::read_crashes,
+            commands::system::clear_crashes,
+            commands::launch::launch_game,
+            commands::games::store_games_state,
+            commands::games::store_game_open,
+            commands::games::store_game_install,
+            commands::games::bedrock_join,
+            commands::content::install_mod,
+            commands::content::list_versions,
+            commands::content::list_versions_typed,
+            commands::content::list_loader_versions,
+            commands::profiles::list_profiles,
+            commands::profiles::create_profile,
+            commands::profiles::launch_profile,
+            commands::profiles::install_modpack,
+            commands::profiles::install_modpack_version,
+            commands::profiles::migrate_plan,
+            commands::profiles::migrate_profile,
+            commands::profiles::install_catalog_pack,
+            commands::profiles::install_pack_candidate,
+            commands::profiles::update_catalog_pack,
+            commands::profiles::sync_catalog_pack,
+            commands::profiles::protected_builds,
+            commands::profiles::pack_auto_update,
+            commands::profiles::set_pack_auto_update,
+            commands::profiles::pack_review_candidate,
+            commands::profiles::pack_review_queue,
+            commands::profiles::copper_packs,
+            commands::profiles::redeem_pack_key,
+            commands::profiles::pack_buy_url,
+            commands::profiles::cf_install_modpack,
+            commands::system::open_url,
+            commands::launch::cancel_launch,
+            commands::launch::stop_game,
+            commands::launch::running_games,
+            commands::launch::set_game_invite,
+            commands::launch::claim_game_invites,
+            commands::system::game_dir,
+            commands::system::set_game_dir,
+            commands::system::pick_game_dir,
+            commands::system::open_game_folder,
+            commands::system::pick_wallpaper,
+            commands::system::pick_texture,
+            commands::system::copy_picture,
+            commands::system::save_picture_as,
+            commands::content::list_mods,
+            commands::content::toggle_mod,
+            commands::content::delete_mod,
+            commands::profiles::delete_profile,
+            commands::profiles::rename_profile,
+            commands::profiles::set_profile_loader,
+            commands::profiles::open_profile_folder,
+            commands::accounts::discord_presence,
+            commands::accounts::discord_status,
+            commands::accounts::discord_reconnect,
+            commands::accounts::discord_clear,
+            commands::content::install_content,
+            commands::content::catalog_install,
+            commands::content::catalog_install_plan,
+            commands::content::list_content,
+            commands::content::dep_plan,
+            commands::content::install_dep_items,
+            commands::content::audit_deps,
+            commands::content::scan_content_local,
+            commands::content::scan_content,
+            commands::content::toggle_content,
+            commands::content::delete_content,
+            commands::launch::list_logs,
+            commands::launch::read_log,
+            commands::profiles::duplicate_profile,
+            commands::profiles::save_profile_settings,
+            commands::profiles::set_profile_java_major,
+            commands::profiles::load_profile_settings,
+            commands::profiles::set_profile_gpu,
+            commands::profiles::gpu_switch_supported,
+            commands::profiles::skin_mod_state,
+            commands::profiles::set_skin_mod,
+            commands::profiles::fps_boost_state,
+            commands::profiles::set_fps_boost,
+            commands::profiles::scan_imports,
+            commands::profiles::pick_import_dir,
+            commands::profiles::import_instance,
+            commands::profiles::plan_moves,
+            commands::profiles::move_instance,
+            commands::profiles::import_pack_file,
+            commands::profiles::import_dropped_pack,
+            commands::accounts::ms_device_start,
+            commands::accounts::ms_device_poll,
+            commands::accounts::ms_session_commit,
+            commands::accounts::ms_session_refresh,
+            commands::accounts::ms_session_validate,
+            commands::accounts::ms_session_forget,
+            commands::accounts::ely_device_start,
+            commands::accounts::ely_device_poll,
+            commands::accounts::ely_session_commit,
+            commands::accounts::mc_textures,
+            commands::accounts::ms_profile,
+            commands::accounts::ms_set_cape,
+            commands::accounts::ms_upload_skin,
+            commands::accounts::read_skin_png,
+            commands::accounts::ms_reset_skin,
+            commands::launch::list_worlds,
+            commands::launch::list_servers,
+            commands::launch::add_server,
+            commands::launch::remove_server,
+            commands::launch::pin_server_dat,
+            commands::launch::quick_play,
+            commands::profiles::set_profile_icon,
+            commands::profiles::pick_profile_cover,
+            commands::profiles::pick_cover_image,
+            commands::profiles::clear_profile_cover,
+            commands::content::check_updates,
+            commands::content::update_content,
+            commands::content::content_versions,
+            commands::content::set_content_version,
+            commands::content::update_all,
+            commands::content::add_local_file,
+            commands::content::pick_content_files,
+            commands::content::export_mrpack,
+            commands::content::install_version,
+            commands::content::cf_search,
+            commands::content::cf_install,
+            commands::content::cf_project,
+            commands::content::cf_files,
+            commands::content::cf_install_world,
+            commands::content::install_catalog_file,
+            commands::content::list_world_installs,
+            commands::content::active_installs,
+            commands::content::cancel_install,
+            commands::content::pause_install,
+            commands::launch::delete_world,
+            commands::launch::detect_java,
+            commands::launch::test_java,
+            commands::launch::pick_java_path,
+            commands::launch::default_java,
+            commands::launch::set_default_java,
+            commands::launch::java_majors,
+            commands::launch::download_java_runtime,
+            commands::launch::list_java_runtimes,
+            commands::launch::remove_java_runtime,
+            commands::launch::get_playtime,
+            commands::launch::get_play_stats,
+            commands::launch::label_server,
+            commands::launch::share_log,
+            commands::launch::backup_world,
+            commands::launch::list_backups,
+            commands::profiles::open_screenshots,
+            commands::profiles::count_screenshots,
+            commands::profiles::set_profile_group,
+            commands::profiles::get_profile_groups,
+            commands::profiles::modpack_versions,
+            commands::profiles::update_modpack,
+            commands::profiles::modpack_info,
+            commands::profiles::list_screenshots,
+            commands::accounts::copper_logout,
+            commands::accounts::session_status,
+            commands::accounts::set_local_skin,
+            commands::accounts::skin_diagnose,
+            commands::accounts::list_textures,
+            commands::accounts::save_texture,
+            commands::accounts::fetch_texture,
+            commands::accounts::export_png,
+            commands::accounts::delete_texture,
+            commands::accounts::set_texture_slim,
+            commands::accounts::rename_texture,
+            commands::accounts::head_avatar,
+            commands::launch::ping_server,
+            commands::launch::repair_profile,
+            commands::system::cache_size,
+            commands::system::clear_cache,
+            commands::system::is_flatpak,
+            commands::system::update_notes,
+            commands::system::frontend_ready,
+            commands::system::tray_available,
+            commands::system::hide_to_tray,
+            commands::system::show_from_tray,
+            commands::system::set_restore_on_exit,
+            commands::system::ui_prefs,
+            commands::system::set_ui_pref,
+            commands::system::dedupe_scan,
+            commands::system::dedupe_run,
+            commands::system::dedupe_gc,
+            commands::content::scan_mod_safety,
+            commands::content::quarantine_mods,
+            commands::launch::world_details,
+            commands::launch::rename_world,
+            commands::launch::duplicate_world,
+            commands::launch::export_world,
+            commands::launch::import_world,
+            commands::launch::restore_world_backup,
+            commands::launch::delete_world_backup,
+            commands::launch::open_world_folder,
+            commands::launch::apply_crash_fix,
+            commands::launch::tune_profile,
+            commands::launch::set_auto_tune,
+            commands::profiles::screenshot_gallery,
+            commands::profiles::delete_screenshot,
+            commands::profiles::save_screenshot_as,
+            commands::profiles::share_screenshot,
+            commands::profiles::share_profile,
+            commands::profiles::unshare_profile,
+            commands::profiles::pack_preview,
+            commands::profiles::install_shared_pack,
+            commands::profiles::cloud_status,
+            commands::profiles::cloud_push,
+            commands::profiles::cloud_pull,
+            commands::profiles::cloud_forget,
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| on_run_event(app, &event));
+}
+
+#[cfg(test)]
+mod tests {
+    /// Every permission the main window is allowed to hold. Adding an entry here
+    /// is a deliberate act: read the failure message in `capabilities_are_pinned`
+    /// before touching this list.
+    const ALLOWED_PERMISSIONS: &[&str] = &[
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
+        "core:window:allow-minimize",
+        "core:window:allow-toggle-maximize",
+        "core:window:allow-internal-toggle-maximize",
+        "core:window:allow-close",
+        "core:window:allow-destroy",
+        "core:window:allow-start-dragging",
+        "deep-link:allow-get-current",
+        "clipboard-manager:allow-write-text",
+        "process:allow-restart",
+        "process:allow-exit",
+        // Все собственные команды ядра (build.rs, AppManifest): только главное окно.
+        "main-commands",
+    ];
+
+    /// Namespaces that only ever exist to move secret material around. A Tauri
+    /// command carrying one of these in its name is reachable from JavaScript,
+    /// so it hands the vault to anyone who lands an XSS in the webview.
+    const VAULT_NOUNS: &[&str] = &["secret", "vault", "keyring", "keychain", "credential"];
+
+    /// Accessors that turn a token-shaped name into a read/write of the vault.
+    /// `token` alone is fine (`ms_token_expiry`), `token_get` is not.
+    const TOKEN_ACCESSORS: &[&str] =
+        &["get", "read", "all", "many", "list", "dump", "export", "copy", "reveal", "show"];
+
+    fn capabilities_json() -> serde_json::Value {
+        let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities/default.json"));
+        serde_json::from_str(raw).expect("capabilities/default.json must be valid JSON")
+    }
+
+    fn registered_commands() -> Vec<String> {
+        let src = include_str!("lib.rs");
+        let start = src
+            .find("generate_handler![")
+            .expect("lib.rs must register its commands through tauri::generate_handler!");
+        let body = &src[start + "generate_handler![".len()..];
+        let end = body
+            .find(']')
+            .expect("the generate_handler! list must be closed with ']'");
+        body[..end]
+            .split(',')
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with("//"))
+            .filter_map(|path| path.rsplit("::").next())
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn looks_like_vault_access(command: &str) -> bool {
+        let name = command.to_ascii_lowercase();
+        if VAULT_NOUNS.iter().any(|noun| name.contains(noun)) {
+            return true;
+        }
+        name.contains("token") && TOKEN_ACCESSORS.iter().any(|verb| name.contains(verb))
+    }
+
+    #[test]
+    fn capabilities_are_pinned() {
+        let caps = capabilities_json();
+        let actual: Vec<String> = caps["permissions"]
+            .as_array()
+            .expect("capabilities/default.json must contain a \"permissions\" array")
+            .iter()
+            .map(|p| {
+                p.as_str()
+                    .expect("permissions must be plain strings, not scoped objects")
+                    .to_string()
+            })
+            .collect();
+
+        let added: Vec<&String> =
+            actual.iter().filter(|p| !ALLOWED_PERMISSIONS.contains(&p.as_str())).collect();
+        let removed: Vec<&&str> = ALLOWED_PERMISSIONS
+            .iter()
+            .filter(|p| !actual.iter().any(|a| a == *p))
+            .collect();
+
+        assert!(
+            added.is_empty(),
+            "capabilities/default.json grants permissions that this test does not know about: \
+             {added:?}. The main window deliberately lists individual permissions instead of \
+             `core:default`, because every permission the webview holds is reachable from \
+             JavaScript — an XSS in the webview inherits the whole set. If the new permission is \
+             genuinely needed, add it to ALLOWED_PERMISSIONS in src/lib.rs together with the \
+             reason it is needed; do not widen the file back to `core:default`.",
+        );
+        assert!(
+            removed.is_empty(),
+            "capabilities/default.json no longer grants {removed:?}, which this test still expects. \
+             Dropping a permission is fine and welcome — just delete it from ALLOWED_PERMISSIONS in \
+             src/lib.rs so the pinned list keeps describing reality.",
+        );
+    }
+
+    #[test]
+    fn capabilities_never_use_the_default_permission_set() {
+        let caps = capabilities_json();
+        let raw = caps["permissions"].to_string();
+        assert!(
+            !raw.contains("core:default"),
+            "capabilities/default.json pulls in `core:default`, which re-enables the full core \
+             command surface (window, path, app, resources, webview) for the frontend. The window \
+             is expected to hold only the {} permissions it actually uses.",
+            ALLOWED_PERMISSIONS.len(),
+        );
+    }
+
+    #[test]
+    fn no_command_exposes_the_secret_vault() {
+        let leaking: Vec<String> =
+            registered_commands().into_iter().filter(|c| looks_like_vault_access(c)).collect();
+        assert!(
+            leaking.is_empty(),
+            "these Tauri commands look like direct access to the secret vault: {leaking:?}. \
+             Anything in generate_handler! can be invoked from the webview, so such a command \
+             lets any XSS read or overwrite stored tokens. Secrets must stay inside Rust: expose \
+             a command that performs the authenticated action (see copper_api_auth) instead of \
+             one that returns the secret value.",
+        );
+    }
+
+    #[test]
+    fn command_list_is_actually_parsed() {
+        let commands = registered_commands();
+        assert!(
+            commands.len() > 50,
+            "only {} commands were parsed out of generate_handler! in lib.rs, which means the \
+             parser in registered_commands() no longer matches the source layout — \
+             no_command_exposes_the_secret_vault would then pass without checking anything.",
+            commands.len(),
+        );
+        assert!(
+            commands.iter().any(|c| c == "app_version"),
+            "the well-known command `app_version` is missing from the parsed list, so \
+             registered_commands() is reading the wrong text.",
+        );
+    }
+
+    #[test]
+    fn vault_access_heuristic_catches_the_removed_commands() {
+        for name in ["secret_get", "secret_get_many", "secret_set", "secret_delete", "vault_dump", "get_keyring_entry", "token_get_all"] {
+            assert!(
+                looks_like_vault_access(name),
+                "the heuristic must flag `{name}`; otherwise no_command_exposes_the_secret_vault \
+                 would let it back into generate_handler! unnoticed.",
+            );
+        }
+        for name in ["app_version", "copper_api", "ms_session_refresh", "list_profiles", "head_avatar"] {
+            assert!(
+                !looks_like_vault_access(name),
+                "the heuristic flags the legitimate command `{name}`; it is too broad and would \
+                 block ordinary work.",
+            );
+        }
+    }
+
+    fn app_config() -> serde_json::Value {
+        let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
+        serde_json::from_str::<serde_json::Value>(raw)
+            .expect("tauri.conf.json must stay valid JSON")["app"]
+            .clone()
+    }
+
+    #[test]
+    fn webview_cannot_reach_the_ipc_bridge_globally() {
+        assert_eq!(
+            app_config()["withGlobalTauri"],
+            serde_json::Value::Bool(false),
+            "withGlobalTauri exposes the whole IPC bridge as window.__TAURI__, so any injected \
+             script reaches every command. The frontend imports what it needs from @tauri-apps \
+             packages instead.",
+        );
+    }
+
+    #[test]
+    fn csp_still_blocks_injected_and_remote_scripts() {
+        let csp = app_config()["security"]["csp"].clone();
+        let list = |key: &str| -> Vec<String> {
+            csp[key]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        };
+        let scripts = list("script-src");
+        assert_eq!(
+            scripts,
+            vec!["'self'".to_string()],
+            "script-src must stay exactly 'self': 'unsafe-inline' or 'unsafe-eval' would let \
+             injected markup run, and a remote origin would let it be loaded from the network.",
+        );
+        for key in ["object-src", "frame-src", "frame-ancestors", "form-action"] {
+            assert_eq!(
+                list(key),
+                vec!["'none'".to_string()],
+                "{key} must stay 'none'; widening it reopens a path for embedded or exfiltrating \
+                 content.",
+            );
+        }
+        assert_eq!(
+            list("base-uri"),
+            vec!["'self'".to_string()],
+            "base-uri must stay 'self', otherwise injected markup can retarget every relative URL.",
+        );
+    }
+
+    #[test]
+    fn asset_protocol_scope_is_granted_at_runtime_only() {
+        let scope = app_config()["security"]["assetProtocol"]["scope"].clone();
+        assert_eq!(
+            scope,
+            serde_json::json!([]),
+            "the static asset scope must stay empty. Runtime grants (see allow_assets) cover \
+             media directories only; a wildcard such as $HOME/** would let an XSS read the whole \
+             home directory.",
+        );
+    }
+
+    type CompositingCase<'a> = (bool, Option<&'a str>, Option<&'a str>, Option<&'a str>, crate::AppImageWaylandFix, &'a str);
+
+    #[test]
+    fn appimage_on_wayland_prefers_xwayland_over_software_compositing() {
+        use crate::AppImageWaylandFix::{None as Keep, SoftwareCompositing, XWayland};
+        let cases: &[CompositingCase] = &[
+            (true, Some("wayland-1"), Some(":0"), None, XWayland, "AppImage on KDE/Hyprland/CachyOS with XWayland: no black window and GPU compositing kept"),
+            (true, Some("wayland-1"), None, None, SoftwareCompositing, "no XWayland: software compositing is the only way to get a picture"),
+            (true, Some("wayland-1"), Some(" "), None, SoftwareCompositing, "a blank DISPLAY is no X server"),
+            (true, Some("wayland-0"), Some(":0"), Some("wayland,x11"), SoftwareCompositing, "Wayland preferred by the user still renders through Wayland"),
+            (true, Some("wayland-1"), Some(":0"), Some("x11"), Keep, "XWayland chosen by the user already renders fine and keeps WebGL"),
+            (true, None, Some(":0"), None, Keep, "X11 session keeps WebGL"),
+            (true, Some(""), Some(":0"), None, Keep, "an empty WAYLAND_DISPLAY is not a Wayland session"),
+            (false, Some("wayland-1"), Some(":0"), None, Keep, "deb/rpm use the host WebKit and keep native Wayland"),
+        ];
+        for (appimage, wayland, display, backend, expected, why) in cases {
+            assert_eq!(
+                crate::appimage_wayland_fix(*appimage, *wayland, *display, *backend),
+                *expected,
+                "appimage={appimage} WAYLAND_DISPLAY={wayland:?} DISPLAY={display:?} GDK_BACKEND={backend:?}: {why}. \
+                 Software compositing renders the whole UI on the CPU and lags; leaving the AppImage \
+                 on native Wayland with GPU compositing shows a black window.",
+            );
+        }
+    }
+
+    #[test]
+    fn nvidia_explicit_sync_is_off_only_on_nvidia_wayland() {
+        let cases: &[(bool, Option<&str>, bool, &str)] = &[
+            (true, Some("wayland-1"), true, "NVIDIA on Hyprland: the Error 71 case the Flatpak users fixed by hand"),
+            (true, None, false, "NVIDIA on X11 has no explicit sync to turn off"),
+            (true, Some(""), false, "an empty WAYLAND_DISPLAY is not a Wayland session"),
+            (false, Some("wayland-1"), false, "Mesa drivers ignore the NVIDIA variable; leave the environment alone"),
+        ];
+        for &(nvidia, wayland, expected, why) in cases {
+            assert_eq!(crate::needs_nv_explicit_sync_off(nvidia, wayland), expected, "nvidia={nvidia} wayland={wayland:?}: {why}");
+        }
+    }
+
+    #[test]
+    fn dmabuf_renderer_is_disabled_only_where_it_paints_nothing() {
+        let cases: &[(bool, bool, bool, &str)] = &[
+            (true, false, true, "AppImage WebKit on a newer host Mesa: the grey-window case"),
+            (false, true, true, "proprietary NVIDIA driver: the grey-window case"),
+            (true, true, true, "AppImage on NVIDIA"),
+            (false, false, false, "deb/rpm/Flatpak on Mesa keep the fast path; the shared-memory fallback lags"),
+        ];
+        for &(appimage, nvidia, expected, why) in cases {
+            assert_eq!(crate::needs_dmabuf_off(appimage, nvidia), expected, "appimage={appimage} nvidia={nvidia}: {why}");
+        }
+    }
+
+    /// directory -> verdict. The vault lives directly under data_dir() and
+    /// imports land under game_root(), so granting either root to `asset://`
+    /// hands the webview the tokens and every copied file.
+    #[test]
+    fn asset_dirs_never_include_a_vault_or_game_root() {
+        let data = crate::engine::data_dir();
+        let forbidden = [data.clone(), crate::engine::game_root(), data.join("..")];
+        for dir in crate::asset_dirs() {
+            for bad in &forbidden {
+                assert_ne!(
+                    &dir, bad,
+                    "{} is served over asset://; secrets.bin, vault.key and imported files sit \
+                     under it and would become readable from the webview.",
+                    dir.display(),
+                );
+            }
+            assert!(
+                dir.starts_with(&data),
+                "{} is outside data_dir(); the asset scope must not reach arbitrary paths.",
+                dir.display(),
+            );
+        }
+    }
+}

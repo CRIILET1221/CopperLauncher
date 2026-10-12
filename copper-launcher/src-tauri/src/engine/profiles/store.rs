@@ -1,0 +1,769 @@
+use crate::engine::*;
+use serde_json::Value;
+use std::path::PathBuf;
+use tauri::AppHandle;
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Profile {
+    pub name: String,
+    pub version: String,
+    pub fabric: bool,
+    /// "vanilla" | "fabric" | "quilt" | "forge" | "neoforge"
+    #[serde(default)]
+    pub loader: Option<String>,
+    /// Exact loader build pinned by a modpack ("47.2.0" for forge-47.2.0);
+    /// empty means use the recommended build.
+    #[serde(default)]
+    pub loader_version: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+}
+
+impl Profile {
+    pub fn loader_id(&self) -> String {
+        self.loader.clone().unwrap_or_else(|| if self.fabric { "fabric".into() } else { "vanilla".into() })
+    }
+}
+
+/// "forge-47.2.0" -> ("forge", Some("47.2.0")): the encoding used by both the
+/// CurseForge manifest and .mrpack dependencies.
+pub(crate) fn split_loader_id(full: &str) -> (String, Option<String>) {
+    let low = full.trim().to_ascii_lowercase();
+    let id = ["neoforge", "forge", "quilt", "fabric"].into_iter()
+        .find(|l| low.starts_with(l)).unwrap_or("vanilla");
+    let ver = low.strip_prefix(id).map(|r| r.trim_start_matches(['-', '_']).trim().to_string())
+        .filter(|v| !v.is_empty() && v.starts_with(|c: char| c.is_ascii_digit()));
+    (id.to_string(), ver)
+}
+
+/// A loader's own version id stored where the game version belongs:
+/// "neoforge-21.1.233", "1.20.1-forge-47.4.10", "fabric-loader-0.16.10-1.21.1".
+/// Such ids come from a version folder imported from TLauncher or the vanilla
+/// launcher; the launch then asked Mojang for version "neoforge-21.1.233" and
+/// stopped at «Версия neoforge-21.1.233 не найдена» (macOS 1.0.106–1.0.115,
+/// aeronautics). Returns (game version, loader, loader build).
+pub(crate) fn split_loader_version_id(id: &str) -> Option<(String, String, String)> {
+    let id = id.trim();
+    let low = id.to_ascii_lowercase();
+    let numeric = |s: &str| !s.is_empty() && s.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+    if let Some(build) = low.strip_prefix("neoforge-") {
+        let mc = neoforge_game_version(build)?;
+        return Some((mc, "neoforge".into(), build.to_string()));
+    }
+    for loader in ["fabric", "quilt"] {
+        if let Some(rest) = low.strip_prefix(&format!("{}-loader-", loader)) {
+            let (build, mc) = rest.rsplit_once('-')?;
+            if is_release_version(mc) && !build.is_empty() {
+                return Some((mc.to_string(), loader.into(), build.to_string()));
+            }
+            return None;
+        }
+    }
+    // "1.20.1-forge-47.4.10" and the legacy "1.7.10-Forge10.13.4.1614-1.7.10".
+    let (mc, rest) = low.split_once("-forge")?;
+    if !is_release_version(mc) {
+        return None;
+    }
+    let rest = rest.trim_start_matches('-');
+    let build = rest.strip_suffix(&format!("-{}", mc)).unwrap_or(rest);
+    numeric(build).then(|| (mc.to_string(), "forge".into(), build.to_string()))
+}
+
+/// NeoForge numbers itself after the game: 21.1.x is 1.21.1, 21.0.x is 1.21.
+/// Year-based MC (26.1.2) keeps its number and adds the build: 26.1.2.109.
+pub(crate) fn neoforge_game_version(build: &str) -> Option<String> {
+    let core = build.split('-').next().unwrap_or("");
+    let parts: Vec<&str> = core.split('.').collect();
+    if parts.iter().any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit())) {
+        return None;
+    }
+    let mc = match parts.as_slice() {
+        [a, b, c, _] if a.parse::<u32>().is_ok_and(|n| n >= 26) => {
+            if *c == "0" { format!("{}.{}", a, b) } else { format!("{}.{}.{}", a, b, c) }
+        }
+        [a, b, _] => {
+            if *b == "0" { format!("1.{}", a) } else { format!("1.{}.{}", a, b) }
+        }
+        _ => return None,
+    };
+    Some(mc)
+}
+
+/// Puts the game version back into builds that hold a loader id instead.
+/// The loader the build already names wins: NeoForge for 1.20.1 has a
+/// Forge-shaped id ("1.20.1-forge-47.1.106").
+fn mend_loader_version_ids(all: &mut [Profile]) -> bool {
+    let mut changed = false;
+    for p in all.iter_mut() {
+        let Some((mc, loader, build)) = split_loader_version_id(&p.version) else { continue };
+        let named = p.loader.clone().filter(|l| l != "vanilla" && !l.is_empty());
+        let loader = named.unwrap_or(loader);
+        p.fabric = matches!(loader.as_str(), "fabric" | "quilt");
+        p.loader = Some(loader);
+        if p.loader_version.as_deref().is_none_or(|v| v.trim().is_empty()) {
+            p.loader_version = Some(build);
+        }
+        p.version = mc;
+        changed = true;
+    }
+    changed
+}
+
+pub(crate) fn profiles_path() -> PathBuf { data_dir().join("profiles.json") }
+
+fn read_profiles_file() -> Vec<Profile> {
+    std::fs::read(profiles_path())
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn dir_slug(name: &str) -> String {
+    profile_dir(name).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+}
+
+fn profile_from_dir(dir: &std::path::Path, slug: &str) -> Option<Profile> {
+    let s: Value = std::fs::read(dir.join("copper-settings.json")).ok()
+        .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let name = match s["name"].as_str() {
+        Some(n) if !n.is_empty() && dir_slug(n) == slug => n.to_string(),
+        _ => slug.to_string(),
+    };
+    let mut version = s["version"].as_str().unwrap_or("").to_string();
+    let mut loader = s["loader"].as_str().unwrap_or("").to_string();
+    if version.is_empty() {
+        let (v, l) = detect_from_game_dir(dir)?;
+        version = v;
+        if loader.is_empty() { loader = l }
+    }
+    if loader.is_empty() || loader == "vanilla" {
+        if let Some(l) = loader_from_mods_dir(dir) { loader = l }
+    }
+    if loader.is_empty() { loader = "vanilla".into() }
+    if version.is_empty() { return None }
+    Some(Profile {
+        name,
+        version,
+        fabric: loader == "fabric",
+        loader: Some(loader),
+        loader_version: s["loaderVersion"].as_str().filter(|v| !v.is_empty()).map(String::from),
+        icon: s["icon"].as_str().filter(|i| !i.is_empty()).map(|i| i.to_string()),
+    })
+}
+
+/// Disk is a second source of truth next to profiles.json, so profiles survive
+/// a game-root change or being copied back in manually.
+fn adopt_disk_profiles(all: &mut Vec<Profile>) -> bool {
+    let root = game_root().join("profiles");
+    let Ok(rd) = std::fs::read_dir(&root) else { return false };
+    let known: std::collections::HashSet<String> = all.iter().map(|p| dir_slug(&p.name)).collect();
+    let mut added = false;
+    for e in rd.flatten() {
+        let dir = e.path();
+        if !dir.is_dir() { continue }
+        let slug = e.file_name().to_string_lossy().to_string();
+        if slug.starts_with('.') || known.contains(&slug) { continue }
+        let Some(p) = profile_from_dir(&dir, &slug) else { continue };
+        if all.iter().any(|x| x.name == p.name) { continue }
+        all.push(p);
+        added = true;
+    }
+    added
+}
+
+pub fn load_profiles() -> Vec<Profile> {
+    let mut all = read_profiles_file();
+    let adopted = adopt_disk_profiles(&mut all);
+    if mend_loader_version_ids(&mut all) | adopted {
+        let _ = save_profiles(&all);
+    }
+    all
+}
+
+pub fn save_profiles(p: &[Profile]) -> Result<(), String> {
+    for x in p { remember_profile(x); }
+    let path = profiles_path();
+    if let Err(first) = write_json_atomic(&path, &p) {
+        let bytes = serde_json::to_vec_pretty(&p).map_err(|e| e.to_string())?;
+        std::fs::write(&path, &bytes)
+            .map_err(|e| format!("Не удалось сохранить список сборок: {} / {}", first, e))?;
+    }
+    Ok(())
+}
+
+/// A name is taken if it is in the list OR its folder exists: the folder is the
+/// name stripped of spaces and punctuation, so different names can collapse onto
+/// the same directory.
+pub(crate) fn unique_profile_name(base: &str) -> String {
+    let base = base.trim();
+    let base = if base.is_empty() { "Импортированная сборка" } else { base };
+    let all = load_profiles();
+    unique_name_with(base, &|n: &str| all.iter().any(|p| p.name == n) || profile_dir(n).exists())
+}
+
+fn unique_name_with(base: &str, taken: &dyn Fn(&str) -> bool) -> String {
+    let mut nm = base.to_string();
+    let mut i = 2;
+    while taken(&nm) {
+        nm = format!("{} ({})", base, i);
+        i += 1;
+    }
+    nm
+}
+
+/// Name taken by a build in the list or by a folder on disk.
+pub(crate) fn profile_name_taken(n: &str) -> bool {
+    load_profiles().iter().any(|p| p.name == n) || profile_dir(n).exists()
+}
+
+pub fn profile_dir(name: &str) -> PathBuf {
+    let safe: String = name.chars().filter(|c| c.is_alphanumeric() || *c=='-' || *c=='_').collect();
+    game_root().join("profiles").join(if safe.is_empty() { "default".into() } else { safe })
+}
+
+/// Sidecar descriptor used to restore a profile moved or copied by hand.
+fn remember_profile(p: &Profile) {
+    let dir = profile_dir(&p.name);
+    if std::fs::create_dir_all(&dir).is_err() { return }
+    let mut patch = serde_json::Map::new();
+    patch.insert("name".into(), Value::String(p.name.clone()));
+    patch.insert("version".into(), Value::String(p.version.clone()));
+    patch.insert("loader".into(), Value::String(p.loader_id()));
+    patch.insert("loaderVersion".into(), Value::String(p.loader_version.clone().unwrap_or_default()));
+    // written even when empty, so a removed icon is not resurrected from disk
+    patch.insert("icon".into(), Value::String(p.icon.clone().unwrap_or_default()));
+    merge_settings(&p.name, patch);
+}
+
+pub(crate) fn merge_settings(profile: &str, patch: serde_json::Map<String, Value>) {
+    let p = profile_dir(profile).join("copper-settings.json");
+    let mut s: serde_json::Map<String, Value> = std::fs::read(&p).ok()
+        .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    for (k, v) in patch { s.insert(k, v); }
+    write_json_quiet(&p, &s);
+}
+
+/// A fresh install never lands on an existing build: every version of a pack
+/// carries the same name in its index, so reusing it wiped the mods of the
+/// version already installed instead of putting the second one beside it.
+pub(crate) fn modpack_profile_name(pack_name: &str, version_number: &str) -> String {
+    modpack_profile_name_with(pack_name, version_number, &profile_name_taken)
+}
+
+pub(crate) fn modpack_profile_name_with(
+    pack_name: &str,
+    version_number: &str,
+    taken: &dyn Fn(&str) -> bool,
+) -> String {
+    let base = pack_name.trim();
+    let base = if base.is_empty() { "Сборка" } else { base };
+    if !taken(base) {
+        return base.to_string();
+    }
+    let vn = version_number.trim();
+    if !vn.is_empty() {
+        let with_ver = format!("{} {}", base, vn);
+        return unique_name_with(&with_ver, taken);
+    }
+    unique_name_with(base, taken)
+}
+
+/// version_id=None picks the newest .mrpack; target=Some(name) updates or rolls
+/// back an existing profile and reinstalls its mods/.
+pub async fn install_modpack(app: AppHandle, slug: String) -> Result<Profile, String> {
+    install_modpack_ver(app, slug, None, None).await
+}
+
+pub async fn install_modpack_ver(app: AppHandle, slug: String, version_id: Option<String>, target: Option<String>) -> Result<Profile, String> {
+    // the slug arrives from the webview, a `copper://` link or a profile's
+    // settings file, and lands in an API path and in job keys
+    check_modpack_slug(&slug)?;
+    if let Some(v) = &version_id {
+        if !modrinth_id_ok(v) {
+            return Err("Некорректная версия сборки".into());
+        }
+    }
+    let job = Job::start(job_key_modpack_mr(&slug, target.as_deref()), target.clone().unwrap_or_else(|| slug.clone()))?;
+    let res = install_modpack_job(&app, &job, slug, version_id, target).await;
+    job.finish(&app, res)
+}
+
+async fn install_modpack_job(app: &AppHandle, job: &Job, slug: String, version_id: Option<String>, target: Option<String>) -> Result<Profile, String> {
+    job.emit(app, 5.0, "Читаем сборку…");
+    let versions = get_json(&format!("https://api.modrinth.com/v2/project/{}/version", slug)).await?;
+    let has_mrpack = |v: &Value| v["files"].as_array().is_some_and(|fs| fs.iter().any(|f| f["filename"].as_str().unwrap_or("").ends_with(".mrpack")));
+    let ver = match &version_id {
+        Some(vid) => versions.as_array().and_then(|a| a.iter().find(|v| v["id"].as_str() == Some(vid.as_str()))).ok_or("Версия сборки не найдена")?,
+        None => versions.as_array().and_then(|a| a.iter().find(|v| has_mrpack(v))).ok_or("mrpack не найден")?,
+    };
+    let vid = ver["id"].as_str().unwrap_or("").to_string();
+    if !modrinth_id_ok(&vid) {
+        return Err("Некорректная версия сборки".into());
+    }
+    let file = ver["files"].as_array().and_then(|fs| fs.iter().find(|f| f["primary"]==true).or(fs.first())).ok_or("Файл сборки не найден")?;
+    let url = file["url"].as_str().ok_or("Нет ссылки на файл сборки")?;
+    if !pack_download_allowed(url) {
+        return Err("Файл сборки лежит на чужом адресе — установка остановлена".into());
+    }
+    // the archive is code: without the hash Modrinth published for it there is
+    // nothing to check it against
+    let sha512 = file["hashes"]["sha512"].as_str().unwrap_or("").to_string();
+    if sha512.len() != 128 || !sha512.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("У сборки нет контрольной суммы — ставить такой архив нельзя".into());
+    }
+    // temp names come from a hash: the slug and the id are untrusted, and the
+    // extraction folder below is wiped with remove_dir_all
+    let tmp_name = hashed_name(&["mrpack", &slug, &vid]);
+    let tmp = data_dir().join("tmp").join(format!("{}.mrpack", tmp_name));
+    job.emit(app, 15.0, "Скачиваем сборку…");
+    if let Some(p) = tmp.parent() {
+        std::fs::create_dir_all(p).map_err(|e| e.to_string())?;
+    }
+    download_checked_cancellable(
+        url,
+        &tmp,
+        Some(Sum::Sha512(&sha512)),
+        file["size"].as_u64(),
+        Some(job.cancel_flag()),
+    )
+    .await?;
+    let ex = data_dir().join("tmp").join(format!("mrpack-{}", tmp_name));
+    let _ = std::fs::remove_dir_all(&ex);
+    std::fs::create_dir_all(&ex).map_err(|e| e.to_string())?;
+    unzip_to(&tmp, &ex)?;
+    job.check()?;
+    let idx_raw = std::fs::read(ex.join("modrinth.index.json"))
+        .map_err(|_| "В архиве сборки нет modrinth.index.json — файл повреждён".to_string())?;
+    let idx: Value = serde_json::from_slice(&idx_raw).map_err(|e| e.to_string())?;
+    let deps = &idx["dependencies"];
+    let mc = deps["minecraft"].as_str().ok_or("Нет версии MC в сборке")?.to_string();
+    check_version_id(&mc)?;
+    // dependency key names the loader, its value pins the exact build the pack
+    // was built against
+    let (lid, fabric, dep_key) = if deps.get("neoforge").is_some() { ("neoforge", false, "neoforge") }
+        else if deps.get("forge").is_some() { ("forge", false, "forge") }
+        else if deps.get("quilt-loader").is_some() { ("quilt", true, "quilt-loader") }
+        else if deps.get("fabric-loader").is_some() { ("fabric", true, "fabric-loader") }
+        else { ("vanilla", false, "") };
+    let loader_version = deps[dep_key].as_str().filter(|v| !v.is_empty()).map(String::from);
+    if let Some(lv) = &loader_version {
+        check_loader_version(lv)?;
+    }
+    let pname = match &target {
+        Some(t) => t.clone(),
+        None => modpack_profile_name(
+            idx["name"].as_str().unwrap_or(&slug),
+            ver["version_number"].as_str().unwrap_or(""),
+        ),
+    };
+    job.rename(&pname);
+    let pdir = profile_dir(&pname);
+    let files = idx["files"].as_array().cloned().unwrap_or_default();
+    let entries = pack_entries(&files, &pdir)?;
+    // The pack owns mods/: leftovers would duplicate classes and crash the game.
+    // Files the pack lists stay, so a repeated install after a cut line does not
+    // download the whole pack again.
+    prune_mods_outside(&pdir, &entries);
+    forget_skin_mod_install(&pname);
+    std::fs::create_dir_all(pdir.join("mods")).map_err(|e| e.to_string())?;
+    let fetched = download_pack_entries(entries, Some(job.cancel_flag()), &|n, total| {
+        job.emit(app, 20.0 + 60.0 * (n as f32 / total.max(1) as f32), &format!("Файлы сборки {}/{}", n, total));
+    })
+    .await;
+    if let Err(e) = fetched {
+        if e == CANCELLED {
+            let _ = std::fs::remove_dir_all(&ex);
+        }
+        return Err(e);
+    }
+    for ov in ["overrides", "client-overrides"] {
+        let src = ex.join(ov);
+        if src.exists() { let _ = copy_overrides(&src, &pdir); }
+    }
+    let _ = std::fs::remove_file(&tmp);
+    let _ = std::fs::remove_dir_all(&ex);
+    let (_, _, pack_icon, _) = fetch_project_meta(&slug).await;
+    let prof = Profile {
+        name: pname.clone(),
+        version: mc,
+        fabric,
+        loader: Some(lid.into()),
+        loader_version,
+        icon: if pack_icon.is_empty() { None } else { Some(pack_icon) },
+    };
+    let mut all = load_profiles();
+    if let Some(p) = all.iter_mut().find(|p| p.name == prof.name) { *p = prof.clone(); }
+    else { all.insert(0, prof.clone()); }
+    save_profiles(&all)?;
+    let mut patch = serde_json::Map::new();
+    patch.insert("modpackSlug".into(), Value::String(slug.clone()));
+    patch.insert("modpackVersionId".into(), Value::String(vid));
+    merge_settings(&pname, patch);
+    job.emit(app, 100.0, "Сборка установлена");
+    Ok(prof)
+}
+
+pub async fn modpack_versions(slug: String) -> Result<Value, String> {
+    check_modpack_slug(&slug)?;
+    let versions = get_json(&format!("https://api.modrinth.com/v2/project/{}/version", slug)).await?;
+    let out: Vec<Value> = versions.as_array().map(|a| a.iter()
+        .filter(|v| v["files"].as_array().is_some_and(|fs| fs.iter().any(|f| f["filename"].as_str().unwrap_or("").ends_with(".mrpack"))))
+        .map(|v| serde_json::json!({
+            "id": v["id"], "name": v["name"], "version_number": v["version_number"],
+            "date": v["date_published"], "changelog": v["changelog"], "type": v["version_type"]
+        })).collect()).unwrap_or_default();
+    Ok(Value::Array(out))
+}
+
+pub async fn update_modpack(app: AppHandle, profile: String, version_id: String) -> Result<Profile, String> {
+    let settings: Value = std::fs::read(profile_dir(&profile).join("copper-settings.json")).ok()
+        .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    let slug = settings["modpackSlug"].as_str().unwrap_or("").to_string();
+    if slug.is_empty() { return Err("Эта сборка создана не из готовой сборки каталога".into()); }
+    check_modpack_slug(&slug)?;
+    install_modpack_ver(app, slug, Some(version_id), Some(profile)).await
+}
+
+pub fn modpack_info(profile: &str) -> Value {
+    let s: Value = std::fs::read(profile_dir(profile).join("copper-settings.json")).ok()
+        .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
+    serde_json::json!({
+        "slug": s["modpackSlug"].as_str().unwrap_or(""),
+        "versionId": s["modpackVersionId"].as_str().unwrap_or("")
+    })
+}
+
+/// Hosts a pack index may send the launcher to. Modrinth's own rules for
+/// .mrpack allow exactly these (plus our mirror, which the downloader applies
+/// on its own): anything else is a pack pulling code from an arbitrary server.
+const PACK_FILE_HOSTS: [&str; 4] = ["cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "gitlab.com"];
+
+pub(crate) fn pack_download_allowed(raw: &str) -> bool {
+    let Ok(u) = url::Url::parse(raw) else { return false };
+    u.scheme() == "https"
+        && u.port().is_none()
+        && u.username().is_empty()
+        && u.host_str().is_some_and(|h| PACK_FILE_HOSTS.contains(&h))
+}
+
+/// sha1 is what the downloader checks and the shared store is keyed by; a file
+/// entry without it (or with a malformed one) is refused, not fetched unchecked.
+pub(crate) fn pack_file_check(f: &Value) -> Result<(String, Option<u64>), String> {
+    let sha1 = f["hashes"]["sha1"].as_str().unwrap_or("").to_ascii_lowercase();
+    let sha512 = f["hashes"]["sha512"].as_str().unwrap_or("");
+    if sha1.len() != 40 || !sha1.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("у файла нет контрольной суммы".into());
+    }
+    if !sha512.is_empty() && (sha512.len() != 128 || !sha512.chars().all(|c| c.is_ascii_hexdigit())) {
+        return Err("повреждённая контрольная сумма".into());
+    }
+    Ok((sha1, f["fileSize"].as_u64()))
+}
+
+/// Files of a big pack fetched at once. One at a time a 300-mod pack spent
+/// most of its install waiting on round trips, not on bytes; past this the
+/// gain flattens and our mirror's per-address limit starts answering 429.
+pub(crate) const PACK_PARALLEL: usize = 8;
+
+pub(crate) struct PackEntry {
+    path: String,
+    dest: PathBuf,
+    sha1: String,
+    size: Option<u64>,
+    urls: Vec<String>,
+}
+
+/// The whole index is checked before the first byte is fetched: a bad entry
+/// at the end used to fail the pack only after every file before it had been
+/// downloaded.
+fn prune_mods_outside(pdir: &std::path::Path, entries: &[PackEntry]) {
+    let mods = pdir.join("mods");
+    let keep: std::collections::HashSet<PathBuf> = entries.iter().map(|e| e.dest.clone()).collect();
+    let Ok(rd) = std::fs::read_dir(&mods) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if keep.contains(&p) {
+            continue;
+        }
+        if p.is_dir() {
+            let _ = std::fs::remove_dir_all(&p);
+        } else {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+pub(crate) fn pack_entries(files: &[Value], pdir: &std::path::Path) -> Result<Vec<PackEntry>, String> {
+    let mut out = Vec::with_capacity(files.len());
+    for f in files {
+        if f["env"]["client"].as_str() == Some("unsupported") { continue; }
+        let Some(path) = f["path"].as_str() else { continue };
+        let dest = safe_join(pdir, path).map_err(|e| format!("Сборка содержит небезопасный путь: {}", e))?;
+        let (sha1, size) = pack_file_check(f).map_err(|e| format!("Сборка отклонена — {}: {}", path, e))?;
+        let urls = f["downloads"].as_array().map(|a| {
+            a.iter().filter_map(|u| u.as_str()).filter(|u| pack_download_allowed(u)).map(String::from).collect()
+        }).unwrap_or_default();
+        out.push(PackEntry { path: path.to_string(), dest, sha1, size, urls });
+    }
+    Ok(out)
+}
+
+/// The Modrinth version id of a `cdn.modrinth.com/data/<project>/versions/<id>/<file>`
+/// address. Ids are base62, so nothing else may reach the API path.
+fn modrinth_version_of(raw: &str) -> Option<String> {
+    let u = url::Url::parse(raw).ok()?;
+    if u.scheme() != "https" || u.host_str()? != "cdn.modrinth.com" {
+        return None;
+    }
+    let seg: Vec<&str> = u.path_segments()?.collect();
+    match seg.as_slice() {
+        ["data", _, "versions", id, file]
+            if !file.is_empty() && !id.is_empty() && id.len() <= 16 && id.chars().all(|c| c.is_ascii_alphanumeric()) =>
+        {
+            Some(id.to_string())
+        }
+        _ => None,
+    }
+}
+
+/// The sha1 Modrinth publishes for the file at this address. Some packs carry a
+/// hash that matches nothing Modrinth serves: the file can then never pass the
+/// pack's check, while Modrinth's own record still vouches for exactly what its
+/// CDN sends.
+async fn modrinth_published_sha1(raw: &str) -> Option<String> {
+    let id = modrinth_version_of(raw)?;
+    let want = url::Url::parse(raw).ok()?;
+    let version = get_json(&format!("https://api.modrinth.com/v2/version/{}", id)).await.ok()?;
+    version["files"]
+        .as_array()?
+        .iter()
+        .find(|f| f["url"].as_str().and_then(|u| url::Url::parse(u).ok()).is_some_and(|u| u == want))
+        .and_then(|f| f["hashes"]["sha1"].as_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|s| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// Downloads every entry, `PACK_PARALLEL` at a time, each checked against its
+/// sha1. The first failure or a cancel stops the rest: dropping the in-flight
+/// transfers removes their temporary files.
+pub(crate) async fn download_pack_entries(
+    entries: Vec<PackEntry>,
+    cancel: Option<&Halt>,
+    on_file: &(dyn Fn(usize, usize) + Sync),
+) -> Result<(), String> {
+    use futures::TryStreamExt;
+    let total = entries.len();
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let done = &done;
+    futures::stream::iter(entries.into_iter().map(Ok::<PackEntry, String>))
+        .try_for_each_concurrent(PACK_PARALLEL, |e| async move {
+            let mut why = String::from("нет разрешённой ссылки на файл");
+            for u in &e.urls {
+                match or_cancel(download_verify(u, &e.dest, Some(&e.sha1), e.size), cancel).await? {
+                    Ok(()) => {
+                        let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                        on_file(n, total);
+                        return Ok(());
+                    }
+                    Err(err) => why = err,
+                }
+            }
+            if why.contains(SUM_MISMATCH) {
+                for u in &e.urls {
+                    let Some(sum) = modrinth_published_sha1(u).await.filter(|s| *s != e.sha1) else { continue };
+                    match or_cancel(download_verify(u, &e.dest, Some(&sum), None), cancel).await? {
+                        Ok(()) => {
+                            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                            on_file(n, total);
+                            return Ok(());
+                        }
+                        Err(err) => why = err,
+                    }
+                }
+            }
+            Err(format!("Не удалось скачать файл сборки: {} ({})", e.path, why))
+        })
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// вход -> (MC, загрузчик, сборка): id папки загрузчика, попавший в поле
+    /// версии игры при импорте из TLauncher, превращается обратно в версию MC.
+    #[test]
+    fn loader_ids_give_back_the_game_version() {
+        let t = |a: &str, b: &str, c: &str| Some((a.to_string(), b.to_string(), c.to_string()));
+        type Split = Option<(String, String, String)>;
+        let cases: [(&str, Split, &str); 13] = [
+            ("fabric-loader-0.18.1-26.2", t("26.2", "fabric", "0.18.1"), "Fabric на MC по годам"),
+            ("26.1.2-forge-62.0.3", t("26.1.2", "forge", "62.0.3"), "Forge на MC по годам"),
+            ("neoforge-21.1.233", t("1.21.1", "neoforge", "21.1.233"), "aeronautics на macOS"),
+            ("neoforge-21.0.167", t("1.21", "neoforge", "21.0.167"), "ветка x.0 — это 1.21"),
+            ("neoforge-20.4.237-beta", t("1.20.4", "neoforge", "20.4.237-beta"), "бета-сборка"),
+            ("neoforge-26.1.2.109", t("26.1.2", "neoforge", "26.1.2.109"), "MC по годам"),
+            ("neoforge-26.2.0.83", t("26.2", "neoforge", "26.2.0.83"), "MC по годам без патча"),
+            ("1.20.1-forge-47.4.10", t("1.20.1", "forge", "47.4.10"), "Forge"),
+            ("1.7.10-Forge10.13.4.1614-1.7.10", t("1.7.10", "forge", "10.13.4.1614"), "легаси-имя Forge"),
+            ("fabric-loader-0.16.10-1.21.1", t("1.21.1", "fabric", "0.16.10"), "Fabric"),
+            ("quilt-loader-0.26.4-1.20.1", t("1.20.1", "quilt", "0.26.4"), "Quilt"),
+            ("1.21.1", None, "обычная версия не трогается"),
+            ("All of Aeronautics - NeoForge 21.1.248", None, "заголовок сборки — не id загрузчика"),
+        ];
+        for (id, want, why) in cases {
+            assert_eq!(split_loader_version_id(id), want, "{}: {}", id, why);
+        }
+    }
+
+    #[test]
+    fn a_build_holding_a_loader_id_is_mended_once() {
+        let mut all = vec![
+            Profile {
+                name: "neoforge-21.1.233".into(),
+                version: "neoforge-21.1.233".into(),
+                fabric: false,
+                loader: Some("neoforge".into()),
+                loader_version: None,
+                icon: None,
+            },
+            Profile {
+                name: "NeoForge 1.20.1".into(),
+                version: "1.20.1-forge-47.1.106".into(),
+                fabric: false,
+                loader: Some("neoforge".into()),
+                loader_version: None,
+                icon: None,
+            },
+            Profile {
+                name: "ok".into(),
+                version: "1.20.1".into(),
+                fabric: false,
+                loader: Some("forge".into()),
+                loader_version: Some("47.4.10".into()),
+                icon: None,
+            },
+        ];
+        assert!(mend_loader_version_ids(&mut all));
+        assert_eq!((all[0].version.as_str(), all[0].loader_version.as_deref()), ("1.21.1", Some("21.1.233")));
+        assert_eq!(all[0].loader.as_deref(), Some("neoforge"));
+        assert_eq!(
+            (all[1].version.as_str(), all[1].loader.as_deref(), all[1].loader_version.as_deref()),
+            ("1.20.1", Some("neoforge"), Some("47.1.106")),
+            "загрузчик, записанный в сборке, важнее формы id"
+        );
+        assert_eq!(all[2].version, "1.20.1");
+        assert!(!mend_loader_version_ids(&mut all), "второй проход ничего не меняет");
+    }
+
+    /// вход -> версия Modrinth, у которой спрашиваем настоящий sha1. Только
+    /// файл версии на CDN Modrinth: иконка, чужой хост или мусор в id в API не идут.
+    #[test]
+    fn only_a_modrinth_version_file_is_rechecked_against_modrinth() {
+        let cases: [(&str, Option<&str>, &str); 6] = [
+            ("https://cdn.modrinth.com/data/40FYwb4z/versions/mRry0DgY/caelus-forge-3.2.0%2B1.20.1.jar", Some("mRry0DgY"), "файл версии мода"),
+            ("https://cdn.modrinth.com/data/40FYwb4z/ae837cab4b8a4d17989b2462bfcd62e8c0451a0f.png", None, "иконка — не файл версии"),
+            ("https://github.com/a/b/releases/download/1/x.jar", None, "не Modrinth"),
+            ("https://cdn.modrinth.com.evil.example/data/a/versions/b/x.jar", None, "похожий хост"),
+            ("https://cdn.modrinth.com/data/a/versions/..%2Fproject/x.jar", None, "id с чужими символами не попадает в путь API"),
+            ("http://cdn.modrinth.com/data/a/versions/b/x.jar", None, "только https"),
+        ];
+        for (raw, want, why) in cases {
+            assert_eq!(modrinth_version_of(raw).as_deref(), want, "{}: {}", raw, why);
+        }
+    }
+
+    #[test]
+    fn pack_files_come_only_from_known_hosts() {
+        for good in [
+            "https://cdn.modrinth.com/data/AANobbMI/versions/x/sodium.jar",
+            "https://github.com/a/b/releases/download/1/x.jar",
+            "https://raw.githubusercontent.com/a/b/main/x.jar",
+            "https://gitlab.com/a/b/-/raw/x.jar",
+        ] {
+            assert!(pack_download_allowed(good), "{good}");
+        }
+        for bad in [
+            "http://cdn.modrinth.com/x.jar",
+            "https://cdn.modrinth.com.evil.example/x.jar",
+            "https://evil.example/cdn.modrinth.com/x.jar",
+            "https://user@cdn.modrinth.com/x.jar",
+            "https://cdn.modrinth.com:8443/x.jar",
+            "file:///etc/passwd",
+            "https://127.0.0.1/x.jar",
+            "",
+        ] {
+            assert!(!pack_download_allowed(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn pack_file_without_hash_is_refused() {
+        let ok = serde_json::json!({"hashes": {"sha1": "a".repeat(40), "sha512": "b".repeat(128)}, "fileSize": 5});
+        assert_eq!(pack_file_check(&ok).unwrap(), ("a".repeat(40), Some(5)));
+        assert!(pack_file_check(&serde_json::json!({"hashes": {}})).is_err());
+        assert!(pack_file_check(&serde_json::json!({"hashes": {"sha1": ""}})).is_err());
+        assert!(pack_file_check(&serde_json::json!({"hashes": {"sha1": "zz"}})).is_err());
+        assert!(pack_file_check(&serde_json::json!({"hashes": {"sha1": "a".repeat(40), "sha512": "x"}})).is_err());
+    }
+
+    #[test]
+    fn loader_id_splits_off_the_build() {
+        assert_eq!(split_loader_id("forge-47.2.0"), ("forge".into(), Some("47.2.0".into())));
+        assert_eq!(split_loader_id("neoforge-21.1.73"), ("neoforge".into(), Some("21.1.73".into())));
+        assert_eq!(split_loader_id("fabric-0.15.11"), ("fabric".into(), Some("0.15.11".into())));
+        assert_eq!(split_loader_id("quilt"), ("quilt".into(), None));
+        assert_eq!(split_loader_id(""), ("vanilla".into(), None));
+        // neoforge must be matched before forge
+        assert_eq!(split_loader_id("NeoForge-21.1.73").0, "neoforge");
+    }
+
+    /// A second version of the same pack must not land on the first one's
+    /// folder: the index name is identical for every version, and reusing it
+    /// deleted the mods of the copy already installed.
+    #[test]
+    fn a_second_version_of_a_pack_gets_its_own_name() {
+        let free = "Сборка которой точно нет 9f3a2";
+        assert_eq!(
+            modpack_profile_name(free, "1.2.3"),
+            free,
+            "a first install keeps the pack name as it is: a version in the name only gets in the way",
+        );
+        assert_eq!(
+            modpack_profile_name("", ""),
+            "Сборка",
+            "a pack whose index carries no name still has to get one",
+        );
+    }
+
+    #[test]
+    fn punctuation_collapses_names_into_one_folder() {
+        assert_eq!(profile_dir("Sky Factory 4"), profile_dir("SkyFactory4"));
+        assert_eq!(profile_dir("Fabulously Optimized 1.21"), profile_dir("Fabulously Optimized 121"));
+        assert_eq!(profile_dir("Моя сборка"), profile_dir("Моясборка"));
+        assert_ne!(profile_dir("Sky Factory 4"), profile_dir("Sky Factory 4 (2)"));
+    }
+
+    /// вход (запись индекса) -> вердикт. Индекс проверяется целиком до первой
+    /// закачки: при параллельной загрузке плохая запись в конце не должна
+    /// оставлять за собой сотни уже скачанных файлов.
+    #[test]
+    fn a_pack_index_is_checked_before_anything_is_fetched() {
+        let pdir = std::env::temp_dir().join("copper-pack-entries");
+        let sha1 = "a".repeat(40);
+        let good = serde_json::json!({ "path": "mods/a.jar", "hashes": { "sha1": sha1 }, "fileSize": 3,
+            "downloads": ["https://cdn.modrinth.com/a.jar", "https://evil.example/a.jar"] });
+        let server_only = serde_json::json!({ "path": "mods/s.jar", "env": { "client": "unsupported" } });
+        let escape = serde_json::json!({ "path": "../../evil.jar", "hashes": { "sha1": sha1 } });
+        let unhashed = serde_json::json!({ "path": "mods/b.jar", "downloads": ["https://cdn.modrinth.com/b.jar"] });
+
+        let ok = pack_entries(&[good.clone(), server_only], &pdir).expect("годный индекс");
+        assert_eq!(ok.len(), 1, "серверный файл в клиент не попадает");
+        assert_eq!(ok[0].urls, vec!["https://cdn.modrinth.com/a.jar".to_string()], "чужой хост отброшен ещё до закачки");
+
+        let cases: [(Value, &str); 2] = [(escape, "путь из индекса выходит за папку сборки"), (unhashed, "файл без sha1 не качается вслепую")];
+        for (bad, why) in cases {
+            assert!(pack_entries(&[good.clone(), bad], &pdir).is_err(), "{}", why);
+        }
+    }
+}

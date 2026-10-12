@@ -1,0 +1,1974 @@
+use crate::engine::*;
+use futures::StreamExt;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Duration;
+use tauri::AppHandle;
+
+pub(crate) const MANIFEST_TTL: Duration = Duration::from_secs(6 * 3600);
+const LOADER_TTL: Duration = Duration::from_secs(24 * 3600);
+/// Assets are thousands of tiny files where request concurrency, not bandwidth,
+/// is the limit; libraries are few and large.
+const PARALLEL_LIBS: usize = 24;
+const PARALLEL_ASSETS: usize = 64;
+
+/// A single library download. Classpath order must follow the version json, so
+/// downloads run in parallel and the classpath is assembled afterwards.
+struct LibJob {
+    rel: String,
+    url: String,
+    sha1: Option<String>,
+    size: Option<u64>,
+    path: PathBuf,
+}
+
+/// Turns an installer run into something a player can act on: its exit code
+/// says nothing, while the last lines it printed name the blocked host or the
+/// directory it could not write.
+fn installer_failure(out: &std::process::Output) -> String {
+    let mut said = String::from_utf8_lossy(&out.stderr).into_owned();
+    if said.trim().is_empty() {
+        said = String::from_utf8_lossy(&out.stdout).into_owned();
+    }
+    let tail = said
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" / ");
+    if tail.is_empty() {
+        return "Инсталлер загрузчика завершился с ошибкой и ничего не сообщил — чаще всего это антивирус или нет доступа к папке игры".into();
+    }
+    let tail: String = tail.chars().take(400).collect();
+    format!("Инсталлер загрузчика завершился с ошибкой: {}", tail)
+}
+
+async fn fetch_libs(jobs: &[LibJob], app: &AppHandle, from: f32, to: f32, title: &str) -> Result<(), String> {
+    let total = jobs.len().max(1);
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let step = (total / 12).max(1);
+    // Each task owns its data: borrowing from the slice would make the future
+    // non-'static, which a Tauri command cannot hold.
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let items: Vec<(String, PathBuf, Option<String>, Option<u64>)> = jobs
+        .iter()
+        .filter(|j| seen.insert(j.path.clone()))
+        .map(|j| (j.url.clone(), j.path.clone(), j.sha1.clone(), j.size))
+        .collect();
+    let results: Vec<Result<(), String>> = futures::stream::iter(items.into_iter().map(|(url, path, sha1, size)| {
+        let done = done.clone();
+        let app = app.clone();
+        let title = title.to_string();
+        async move {
+            let r = download_verify(&url, &path, sha1.as_deref(), size).await;
+            let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if d.is_multiple_of(step) || d == total {
+                emit(&app, "files", from + (to - from) * (d as f32 / total as f32), &title);
+            }
+            r
+        }
+    }))
+    .buffer_unordered(PARALLEL_LIBS)
+    .collect()
+    .await;
+    for r in results {
+        r?;
+    }
+    Ok(())
+}
+
+/// Fabric/Quilt manifests and Forge profiles carry no hashes, but their maven
+/// repos publish a sibling `.sha1`, which is verified when present.
+/// Returns the first error when `strict`, otherwise skips unavailable files.
+/// Loader libraries come without hashes from their meta APIs, so outside a
+/// repair the only affordable check is existence.
+fn loader_lib_intact(path: &Path) -> bool {
+    if !path.exists() {
+        return false;
+    }
+    if !deep_verify() {
+        return true;
+    }
+    !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("jar")) || zip_readable(path)
+}
+
+async fn fetch_missing(jobs: &[LibJob], strict: bool) -> Result<(), String> {
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let items: Vec<(String, PathBuf)> = jobs
+        .iter()
+        .filter(|j| !j.url.is_empty() && !loader_lib_intact(&j.path))
+        .filter(|j| seen.insert(j.path.clone()))
+        .map(|j| (j.url.clone(), j.path.clone()))
+        .collect();
+    // Maven does not always publish a .sha1, and without one an existing file is
+    // accepted as is — a jar already judged broken has to go before the refetch.
+    for (_, path) in &items {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    let results: Vec<Result<(), String>> = futures::stream::iter(items.into_iter().map(|(url, path)| async move {
+        let sha1 = maven_sha1(&url).await.ok();
+        download_checked(&url, &path, sha1.as_deref().map(Sum::Sha1), None).await
+    }))
+    .buffer_unordered(PARALLEL_LIBS)
+    .collect()
+    .await;
+    if strict {
+        for r in results {
+            r?;
+        }
+    }
+    Ok(())
+}
+
+/// Java the version needs. Mojang only started publishing `javaVersion` around
+/// 1.17, so every older release relies on the fallback — and answering 21 there
+/// hands Minecraft 1.6.4 a runtime it cannot start on at all.
+pub(crate) fn java_major_of(vjson: &Value, vid: &str) -> u64 {
+    vjson["javaVersion"]["majorVersion"].as_u64().unwrap_or_else(|| java_major_for(vid))
+}
+
+/// Fingerprint of the version's native set; unchanged means no need to unpack
+/// the classifier jars again.
+fn natives_stamp_path(natives_dir: &Path) -> PathBuf {
+    natives_dir.join(".copper-natives")
+}
+
+fn natives_up_to_date(natives_dir: &Path, stamp: &str, deep: bool) -> bool {
+    if deep {
+        return false;
+    }
+    std::fs::read_to_string(natives_stamp_path(natives_dir))
+        .map(|s| s == stamp)
+        .unwrap_or(false)
+}
+
+/// Asset indexes up to `legacy` (1.7.2 and older) address objects by their file
+/// name, not by hash: those versions look for real files under `--assetsDir` and
+/// find an empty world without them. `pre-1.6` says the same thing under its own
+/// key.
+pub(crate) fn assets_are_virtual(index: &Value) -> bool {
+    index["virtual"] == true || index["map_to_resources"] == true
+}
+
+/// Lays the object store out under real names for a virtual index. Returns the
+/// directory the game must be pointed at.
+fn build_virtual_assets(index: &Value, root: &Path, index_id: &str) -> Result<PathBuf, String> {
+    let dir = root.join("assets").join("virtual").join(safe_file_name(index_id)?);
+    let objects = root.join("assets").join("objects");
+    let mut laid = 0usize;
+    let mut missing: Vec<String> = vec![];
+    for (name, meta) in index["objects"].as_object().cloned().unwrap_or_default() {
+        let Some(hash) = meta["hash"].as_str() else { continue };
+        let Some(pre) = hash.get(0..2) else { continue };
+        let src = objects.join(pre).join(hash);
+        let dest = safe_join(&dir, &name)?;
+        let want = meta["size"].as_u64();
+        if std::fs::metadata(&dest).is_ok_and(|m| want.is_none_or(|w| m.len() == w)) {
+            continue;
+        }
+        if !src.exists() {
+            missing.push(name.clone());
+            continue;
+        }
+        if let Some(p) = dest.parent() {
+            std::fs::create_dir_all(p).map_err(|e| format!("Не удалось создать {}: {}", p.display(), e))?;
+        }
+        std::fs::copy(&src, &dest)
+            .map_err(|e| format!("Не удалось разложить ассет {}: {}", name, e))?;
+        laid += 1;
+    }
+    if !missing.is_empty() && laid == 0 && !dir.exists() {
+        return Err(format!(
+            "Ассеты старой версии не скачались ({} файлов). Проверь интернет и нажми «Починить сборку».",
+            missing.len()
+        ));
+    }
+    Ok(dir)
+}
+
+/// Why a maven sum could not be read. `Absent` is an expected answer: every
+/// Forge build is offered under two names and only one of them exists, so a
+/// 404 here says "not this name", not "something went wrong".
+enum MavenMiss {
+    Absent,
+    Unreachable(String),
+}
+
+/// Сумма инсталлятора: сначала встроенная таблица (maven не нужен вовсе), потом
+/// maven по кругу прямой путь → наше зеркало → снова прямой.
+async fn installer_sha1(url: &str) -> Result<String, MavenMiss> {
+    if let Some(sum) = known_installer_sha1(url) {
+        return Ok(sum.to_string());
+    }
+    maven_sha1_via(&routes_round_trip(&format!("{}.sha1", url)).await).await
+}
+
+/// Одна попытка на адрес — мало: `.sha1` весит 40 байт, и падает он не от
+/// размера, а от того, что соединение до maven рвётся через раз. Поэтому каждый
+/// путь пробуется дважды с растущей паузой.
+const SUM_TRIES_PER_ROUTE: u32 = 2;
+const SUM_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn sum_backoff(step: u32) -> Duration {
+    Duration::from_millis((500u64 << step.min(3)).min(4000))
+}
+
+async fn maven_sha1_via(targets: &[String]) -> Result<String, MavenMiss> {
+    let mut last = String::from("нет адреса");
+    let mut step = 0u32;
+    for target in targets {
+        for _ in 0..SUM_TRIES_PER_ROUTE {
+            if step > 0 {
+                tokio::time::sleep(sum_backoff(step - 1)).await;
+            }
+            step += 1;
+            match maven_sha1_once(target).await {
+                Ok(hex) => return Ok(hex),
+                Err(MavenMiss::Absent) => return Err(MavenMiss::Absent),
+                Err(MavenMiss::Unreachable(e)) => last = e,
+            }
+        }
+    }
+    Err(MavenMiss::Unreachable(last))
+}
+
+/// Reads the maven sibling `.sha1`; the body is bare hex, sometimes followed by
+/// a file name, so only the first word is taken and validated. 404/410 is
+/// maven's own answer "no such file" — through our mirror it comes back the same.
+async fn maven_sha1_once(sum: &str) -> Result<String, MavenMiss> {
+    let res = client()
+        .get(sum)
+        .timeout(SUM_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| MavenMiss::Unreachable(net_err(&e)))?;
+    if res.status() == 404 || res.status() == 410 {
+        return Err(MavenMiss::Absent);
+    }
+    let text = res
+        .error_for_status()
+        .map_err(|e| MavenMiss::Unreachable(e.to_string()))?
+        .text()
+        .await
+        .map_err(|e| MavenMiss::Unreachable(e.to_string()))?;
+    parse_sha1(&text).ok_or_else(|| MavenMiss::Unreachable("контрольная сумма нечитаема".into()))
+}
+
+/// Сумма библиотеки загрузчика: необязательна, поэтому одна попытка — без неё
+/// файл всё равно качается, а круг с паузами на десятках библиотек растянул бы
+/// установку на плохой сети на минуты.
+async fn maven_sha1(url: &str) -> Result<String, MavenMiss> {
+    maven_sha1_once(&format!("{}.sha1", url)).await
+}
+
+fn parse_sha1(text: &str) -> Option<String> {
+    let hex = text.split_whitespace().next().unwrap_or_default().to_lowercase();
+    (hex.len() == 40 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(hex)
+}
+
+/// What to tell the player when no installer candidate worked.
+///
+/// A real failure always wins over a missing name: `forge_installers` offers two
+/// names per build knowing one of them does not exist, and that name is last in
+/// the list, so its 404 used to overwrite the installer's own account of why it
+/// gave up.
+fn installer_giveup(loader: &str, last_err: &str, absent: &[String]) -> String {
+    if !last_err.is_empty() {
+        return last_err.to_string();
+    }
+    match absent.first() {
+        Some(name) => format!("{}: такого билда нет в репозитории загрузчика", name),
+        None => format!("{} для этой версии не найден", loader),
+    }
+}
+
+/// The version json a loader installer writes as `<dir name>.json` inside its dir.
+fn loader_profile_json(dir: &Path) -> Option<Value> {
+    let name = dir.file_name()?.to_string_lossy().to_string();
+    serde_json::from_slice(&std::fs::read(dir.join(format!("{}.json", name))).ok()?).ok()
+}
+
+/// The Forge/NeoForge installer writes the version json before it downloads
+/// mappings and runs its patch processors, so an installer that died halfway
+/// leaves a dir that looks installed while the patched client jars FML loads
+/// are missing. The dir counts as installed only next to this record, written
+/// once every processor output is on disk.
+const LOADER_OUTPUTS_FILE: &str = "copper-loader-outputs.json";
+
+fn read_install_profile(installer: &Path) -> Result<Value, String> {
+    let f = std::fs::File::open(installer).map_err(|e| io_fail("Инсталлер загрузчика", installer, &e))?;
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(f)).map_err(|e| format!("Инсталлер загрузчика повреждён: {}", e))?;
+    let entry = zip
+        .by_name("install_profile.json")
+        .map_err(|_| "в инсталлере нет install_profile.json".to_string())?;
+    serde_json::from_reader(entry).map_err(|e| format!("install_profile.json инсталлера не читается: {}", e))
+}
+
+/// Library paths the client-side processors of an install profile read or
+/// write. Arguments are either `[maven coords]` or `{KEY}` looked up in the
+/// profile's `data`; server-only steps (unpacking the server bundle) never run
+/// for a client install, so their outputs are not expected.
+fn processor_outputs(profile: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for p in profile["processors"].as_array().into_iter().flatten() {
+        let for_client = p["sides"]
+            .as_array()
+            .is_none_or(|sides| sides.iter().any(|s| s.as_str() == Some("client")));
+        if !for_client {
+            continue;
+        }
+        for arg in p["args"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+            let resolved = match arg.strip_prefix('{').and_then(|k| k.strip_suffix('}')) {
+                Some(key) => profile["data"][key]["client"].as_str(),
+                None => Some(arg),
+            };
+            let Some(coord) = resolved.and_then(|r| r.strip_prefix('[')).and_then(|r| r.strip_suffix(']')) else {
+                continue;
+            };
+            let rel = maven_path(coord);
+            if !out.contains(&rel) {
+                out.push(rel);
+            }
+        }
+    }
+    out
+}
+
+/// FML opens the universal jar, fmlcore and the language providers straight from
+/// the libraries folder, and only the installer downloads them: the version json
+/// does not list them, so nothing else would notice that one is gone.
+///
+/// The installer fetches these only for its processors: a profile without
+/// processors (Forge 1.12.2 on the 2.x installer) lists `mcp_config` here that
+/// is never downloaded, so waiting for it fails every install.
+fn installer_libraries(profile: &Value) -> Vec<String> {
+    if profile["processors"].as_array().is_none_or(|p| p.is_empty()) {
+        return vec![];
+    }
+    profile["libraries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|lib| {
+            lib["downloads"]["artifact"]["path"]
+                .as_str()
+                .filter(|p| !p.is_empty())
+                .map(str::to_string)
+                .or_else(|| lib["name"].as_str().map(maven_path))
+        })
+        .collect()
+}
+
+fn install_outputs(profile: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for rel in installer_libraries(profile).into_iter().chain(processor_outputs(profile)) {
+        if !out.contains(&rel) {
+            out.push(rel);
+        }
+    }
+    out
+}
+
+/// A library the installer would download itself, as `(path, url, sha1, size)`.
+type InstallerDownload = (String, String, String, Option<u64>);
+
+/// Libraries of the install profile and of the version json it carries that
+/// have a public address and a published sha1. The installer fetches them
+/// straight from maven and Mojang with no way around a blocked host, but keeps
+/// any file already on disk whose sha1 matches, so fetching them first through
+/// the launcher's routes leaves it nothing to download.
+fn installer_downloads(profile: &Value, version: Option<&Value>) -> Vec<InstallerDownload> {
+    let mut out: Vec<InstallerDownload> = vec![];
+    for lib in [Some(profile), version].into_iter().flatten().flat_map(|j| j["libraries"].as_array().into_iter().flatten()) {
+        let art = &lib["downloads"]["artifact"];
+        let (Some(rel), Some(url), Some(sha1)) = (art["path"].as_str(), art["url"].as_str(), art["sha1"].as_str()) else {
+            continue;
+        };
+        if rel.is_empty() || url.is_empty() || sha1.len() != 40 || out.iter().any(|(r, ..)| r == rel) {
+            continue;
+        }
+        out.push((rel.to_string(), url.to_string(), sha1.to_ascii_lowercase(), art["size"].as_u64()));
+    }
+    out
+}
+
+fn read_installer_version_json(installer: &Path, profile: &Value) -> Option<Value> {
+    let name = profile["json"].as_str()?.trim_start_matches('/');
+    let f = std::fs::File::open(installer).ok()?;
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(f)).ok()?;
+    let entry = zip.by_name(name).ok()?;
+    serde_json::from_reader(entry).ok()
+}
+
+fn missing_outputs(libs: &Path, outputs: &[String]) -> Result<Vec<String>, String> {
+    let mut missing = vec![];
+    for rel in outputs {
+        let path = safe_join(libs, rel).map_err(|e| format!("Профиль загрузчика ссылается на файл вне папки: {}", e))?;
+        if !loader_lib_intact(&path) {
+            missing.push(rel.clone());
+        }
+    }
+    Ok(missing)
+}
+
+fn record_outputs(dir: &Path, outputs: &[String]) -> Result<(), String> {
+    write_json_atomic(&dir.join(LOADER_OUTPUTS_FILE), outputs)
+}
+
+fn recorded_outputs(dir: &Path) -> Option<Vec<String>> {
+    serde_json::from_slice(&std::fs::read(dir.join(LOADER_OUTPUTS_FILE)).ok()?).ok()
+}
+
+/// The installer that created a loader dir, recovered from the dir name, so a
+/// dir without a completeness record is checked against its own build rather
+/// than whatever the promotions list recommends today. Pre-1.13 Forge dirs are
+/// named `<mc>-Forge<build>-<mc>`, match nothing here and have no processors
+/// to check.
+fn installers_for_dir(loader: &str, vid: &str, dir_name: &str) -> Option<Vec<(String, String)>> {
+    let forge_prefix = format!("{}-forge-", vid);
+    let prefix = if loader == "neoforge" && !neoforge_on_forge_coords(vid) { "neoforge-" } else { &forge_prefix };
+    let build = dir_name.strip_prefix(prefix).filter(|b| check_loader_version(b).is_ok())?;
+    let installers = if loader == "neoforge" { vec![neoforge_installer(vid, build)] } else { forge_installers(vid, build) };
+    installers.iter().all(|(_, name)| name == dir_name).then_some(installers)
+}
+
+enum LoaderDir {
+    Ready,
+    Broken(Vec<String>),
+    Unverified,
+}
+
+fn loader_dir_state(dir: &Path, libs: &Path, loader: &str, vid: &str) -> Result<LoaderDir, String> {
+    if let Some(outputs) = recorded_outputs(dir) {
+        let missing = missing_outputs(libs, &outputs)?;
+        return Ok(if missing.is_empty() { LoaderDir::Ready } else { LoaderDir::Broken(missing) });
+    }
+    let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    Ok(match installers_for_dir(loader, vid, &name) {
+        Some(_) => LoaderDir::Unverified,
+        None => LoaderDir::Ready,
+    })
+}
+
+/// Forge published its installer under two names: `forge-<mc>-<build>` and, up
+/// to MC 1.9.4, `forge-<mc>-<build>-<mc>`. Only one of them exists per build, so
+/// both are offered and the missing one is skipped on its 404.
+fn forge_installers(vid: &str, build: &str) -> Vec<(String, String)> {
+    const MAVEN: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
+    let f = format!("{}-{}", vid, build);
+    // The Forge installer creates "<mc>-forge-<build>", not "forge-<mc>-<build>".
+    let dir_name = format!("{}-forge-{}", vid, build);
+    vec![
+        (format!("{MAVEN}/{f}/forge-{f}-installer.jar"), dir_name.clone()),
+        (format!("{MAVEN}/{f}-{vid}/forge-{f}-{vid}-installer.jar"), dir_name),
+    ]
+}
+
+const NEOFORGE_MAVEN: &str = "https://maven.neoforged.net";
+
+/// NeoForge для 1.20.1 — ещё форк Forge: он лежит под координатами
+/// `net.neoforged:forge` со сборками `1.20.1-47.1.x`, а его инсталлятор создаёт
+/// профиль `1.20.1-forge-47.1.x`. Лаунчер искал его в `net.neoforged:neoforge`,
+/// где такой ветки нет, и каждая сборка NeoForge 1.20.1 падала с «NeoForge для
+/// этой версии не найден» (275 запусков за две недели).
+fn neoforge_on_forge_coords(vid: &str) -> bool {
+    vid == "1.20.1"
+}
+
+/// Инсталлятор сборки NeoForge и имя папки, которую он создаёт.
+fn neoforge_installer(vid: &str, build: &str) -> (String, String) {
+    if neoforge_on_forge_coords(vid) {
+        let b = build.strip_prefix("1.20.1-").unwrap_or(build);
+        return (
+            format!("{NEOFORGE_MAVEN}/releases/net/neoforged/forge/1.20.1-{b}/forge-1.20.1-{b}-installer.jar"),
+            format!("1.20.1-forge-{b}"),
+        );
+    }
+    (
+        format!("{NEOFORGE_MAVEN}/releases/net/neoforged/neoforge/{build}/neoforge-{build}-installer.jar"),
+        format!("neoforge-{}", build),
+    )
+}
+
+fn neoforge_versions_url(vid: &str) -> String {
+    let artifact = if neoforge_on_forge_coords(vid) { "forge" } else { "neoforge" };
+    format!("{NEOFORGE_MAVEN}/api/maven/versions/releases/net/neoforged/{artifact}")
+}
+
+fn neoforge_versions_cache(vid: &str) -> &'static str {
+    if neoforge_on_forge_coords(vid) { "neoforge-forge-versions.json" } else { "neoforge-versions.json" }
+}
+
+/// Сборки NeoForge для версии MC, новые первыми.
+fn neoforge_candidates(list: &Value, vid: &str) -> Vec<String> {
+    if !neoforge_on_forge_coords(vid) {
+        return neoforge_builds(list, vid);
+    }
+    let mut builds: Vec<String> = list["versions"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| v.strip_prefix("1.20.1-").unwrap_or(v).to_string())
+        .filter(|v| v.starts_with("47.1."))
+        .collect();
+    builds.sort_by_key(|v| v.split(['.', '-']).map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>());
+    builds.dedup();
+    builds.reverse();
+    builds
+}
+
+fn exact_loader_dir(vdir: &Path, name: &str) -> Option<PathBuf> {
+    let dir = vdir.join(name);
+    dir.join(format!("{}.json", name)).exists().then_some(dir)
+}
+
+/// Forge installers written before the 1.13 spec carry no client CLI at all:
+/// they reject `--installClient` as an unknown option and exit, which is why
+/// every build for MC 1.12.1 and older died on "installer failed". Such a
+/// profile is declarative — its version json is `versionInfo`, and the only file
+/// to lay out is the core jar packed inside the installer — so the launcher
+/// installs it itself. `None` means a modern profile, which its own installer
+/// still has to apply because of the patch processors.
+fn install_legacy_forge(installer: &Path, vdir: &Path, libs: &Path) -> Result<Option<PathBuf>, String> {
+    let profile = read_install_profile(installer)?;
+    let Some(vinfo) = profile.get("versionInfo").filter(|v| v.is_object()).cloned() else {
+        return Ok(None);
+    };
+    let f = std::fs::File::open(installer).map_err(|e| io_fail("Инсталлер загрузчика", installer, &e))?;
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(f)).map_err(|e| format!("Инсталлер загрузчика повреждён: {}", e))?;
+    // The id names the version directory and the maven coordinates name the jar
+    // path, and both come out of a downloaded archive, so both go through the
+    // path guards.
+    let id = safe_file_name(vinfo["id"].as_str().ok_or("в профиле загрузчика нет id")?)?;
+    let coord = profile["install"]["path"].as_str().ok_or("в профиле загрузчика нет координат ядра")?;
+    let packed = profile["install"]["filePath"].as_str().ok_or("в профиле загрузчика нет ядра")?;
+    let jar = safe_join(libs, &maven_path(coord))?;
+    if let Some(p) = jar.parent() {
+        std::fs::create_dir_all(p).map_err(|e| io_fail("Установка Forge", p, &e))?;
+    }
+    let tmp = jar.with_extension(format!("{}.part", std::process::id()));
+    {
+        let mut src = zip.by_name(packed).map_err(|_| format!("в инсталлере нет {}", packed))?;
+        let mut out = std::fs::File::create(&tmp).map_err(|e| format!("{}: {}", tmp.display(), e))?;
+        std::io::copy(&mut src, &mut out).map_err(|e| format!("{}: {}", tmp.display(), e))?;
+    }
+    std::fs::rename(&tmp, &jar).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("{}: {}", jar.display(), e)
+    })?;
+    // The version json is what marks the loader as installed, so it is written
+    // only after the core jar is in place.
+    let dir = vdir.join(&id);
+    std::fs::create_dir_all(&dir).map_err(|e| io_fail("Установка Forge", &dir, &e))?;
+    write_json_atomic(&dir.join(format!("{}.json", id)), &vinfo)?;
+    Ok(Some(dir))
+}
+
+/// Old Forge profiles name `files.minecraftforge.net/maven`, which stopped
+/// serving artifacts; the layout on the maven host is the same.
+fn maven_base(url: &str) -> String {
+    for dead in ["http://files.minecraftforge.net/maven/", "https://files.minecraftforge.net/maven/"] {
+        if let Some(rest) = url.strip_prefix(dead) {
+            return format!("https://maven.minecraftforge.net/{}", rest);
+        }
+    }
+    url.to_string()
+}
+
+/// Locates an installed Forge/NeoForge dir for this MC version: exact name
+/// first, then the newest loader dir whose `inheritsFrom` matches, since a
+/// NeoForge dir name does not contain the MC version at all.
+fn resolve_loader_dir(vdir: &Path, loader: &str, ver_dir_name: &str, vid: &str) -> Option<PathBuf> {
+    let exact = vdir.join(ver_dir_name);
+    if exact.join(format!("{}.json", ver_dir_name)).exists() {
+        return Some(exact);
+    }
+    let mut cands: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(vdir)
+        .ok()?
+        .flatten()
+        // "neoforge-21.1.73" also contains "forge", so plain Forge must exclude it.
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_lowercase();
+            n.contains(loader) && (loader == "neoforge" || !n.contains("neoforge"))
+        })
+        .filter(|e| {
+            loader_profile_json(&e.path()).is_some_and(|j| j["inheritsFrom"].as_str() == Some(vid))
+        })
+        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path())))
+        .collect();
+    cands.sort_by_key(|(t, _)| *t);
+    cands.pop().map(|(_, p)| p)
+}
+
+/// Carries the loader's launch arguments into the merged json. MC 1.13+ loaders
+/// ship an `arguments` object, while 1.12.2 and older ship a `minecraftArguments`
+/// string that replaces the vanilla one — dropping it loses `--tweakClass`, and
+/// LaunchWrapper then falls back to VanillaTweaker and cannot find Minecraft.
+fn apply_loader_args(merged: &mut Value, loader_json: &Value) {
+    merged["fabricArguments"] = loader_json["arguments"].clone();
+    if let Some(legacy) = loader_json["minecraftArguments"].as_str() {
+        merged["minecraftArguments"] = Value::String(legacy.to_string());
+    }
+}
+
+/// Returns (merged version json, main_class, classpath, java_bin).
+pub async fn install(
+    app: &AppHandle,
+    version_id: &str,
+    with_fabric: bool,
+) -> Result<(Value, String, Vec<PathBuf>, PathBuf), String> {
+    install_loader(app, version_id, if with_fabric { "fabric" } else { "vanilla" }).await
+}
+
+pub async fn install_loader(
+    app: &AppHandle,
+    version_id: &str,
+    loader: &str,
+) -> Result<(Value, String, Vec<PathBuf>, PathBuf), String> {
+    install_loader_pinned(app, version_id, loader, None).await
+}
+
+/// Same, but pinned to an exact loader build: modpacks target one build and the
+/// recommended one usually breaks their mods.
+pub async fn install_loader_pinned(
+    app: &AppHandle,
+    version_id: &str,
+    loader: &str,
+    loader_version: Option<&str>,
+) -> Result<(Value, String, Vec<PathBuf>, PathBuf), String> {
+    install_loader_with_java(app, version_id, loader, loader_version, None).await
+}
+
+/// `java_override` skips downloading the bundled JRE entirely.
+pub async fn install_loader_with_java(
+    app: &AppHandle,
+    version_id: &str,
+    loader: &str,
+    loader_version: Option<&str>,
+    java_override: Option<PathBuf>,
+) -> Result<(Value, String, Vec<PathBuf>, PathBuf), String> {
+    // Both values come from profiles the webview, share codes and pack indexes
+    // write, and both become folder and file names under versions/.
+    if version_id != "latest" {
+        check_version_id(version_id)?;
+    }
+    if let Some(lv) = loader_version {
+        check_loader_version(lv)?;
+    }
+    let root = game_root_ready()?;
+    let libs_root = root.join("libraries");
+    // every library path in any version json is untrusted: joined only if it
+    // stays inside libraries/
+    let lib_path = |rel: &str| -> Result<PathBuf, String> {
+        safe_join(&libs_root, rel).map_err(|e| format!("Описание версии ссылается на библиотеку вне папки: {}", e))
+    };
+
+    let (vid, vjson) = vanilla_meta(app, &root, version_id).await?;
+    check_version_id(&vid)?;
+    let java_override = java_override.and_then(|j| java_fits(app, j, java_major_of(&vjson, &vid), &vid));
+
+    emit(app, "files", 12.0, &format!("Minecraft {} — клиент…", vid));
+    let client_jar = root.join("versions").join(&vid).join(format!("{}.jar", vid));
+    download_verify(
+        vjson["downloads"]["client"]["url"]
+            .as_str()
+            .ok_or_else(|| format!("В описании версии {} нет ссылки на клиент", vid))?,
+        &client_jar,
+        vjson["downloads"]["client"]["sha1"].as_str(),
+        vjson["downloads"]["client"]["size"].as_u64(),
+    ).await?;
+
+    // Natives (LWJGL and friends) are extracted from classifier jars per version.
+    let natives_dir = root.join("versions").join(&vid).join("natives");
+    std::fs::create_dir_all(&natives_dir).ok();
+
+    let mut cp: Vec<(String, PathBuf)> = vec![];
+    let libs = vjson["libraries"].as_array().cloned().unwrap_or_default();
+    let mut jobs: Vec<LibJob> = vec![];
+    let mut native_jobs: Vec<(LibJob, Value)> = vec![];
+    for lib in libs.iter() {
+        if !rules_allow(&lib["rules"]) {
+            continue;
+        }
+        if let Some(art) = lib["downloads"]["artifact"].as_object() {
+            if let (Some(rel), Some(url)) = (art["path"].as_str(), art["url"].as_str()) {
+                jobs.push(LibJob {
+                    rel: rel.to_string(),
+                    url: url.to_string(),
+                    sha1: art["sha1"].as_str().map(String::from),
+                    size: art["size"].as_u64(),
+                    path: lib_path(rel)?,
+                });
+            }
+        }
+        // natives: downloads.classifiers[ natives.<os> ], extracted into natives_dir
+        if let Some(nat) = lib["natives"].as_object() {
+            if let Some(key_tmpl) = nat.get(natives_os_key()).and_then(|v| v.as_str()) {
+                let arch = if cfg!(target_arch = "x86_64") { "64" } else { "32" };
+                let key = key_tmpl.replace("${arch}", arch);
+                if let Some(cl) = lib["downloads"]["classifiers"].get(&key).and_then(|c| c.as_object()) {
+                    if let (Some(u), Some(rel)) = (cl["url"].as_str(), cl["path"].as_str()) {
+                        native_jobs.push((
+                            LibJob {
+                                rel: rel.to_string(),
+                                url: u.to_string(),
+                                sha1: cl["sha1"].as_str().map(String::from),
+                                size: cl["size"].as_u64(),
+                                path: lib_path(rel)?,
+                            },
+                            lib["extract"].clone(),
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    emit(app, "files", 15.0, "Библиотеки…");
+    check_cancel()?;
+    fetch_libs(&jobs, app, 15.0, 45.0, "Библиотеки…").await?;
+    for j in &jobs {
+        cp_put(&mut cp, &j.rel, j.path.clone());
+    }
+
+    if !native_jobs.is_empty() {
+        let stamp = native_jobs
+            .iter()
+            .map(|(j, _)| format!("{}:{}", j.rel, j.sha1.clone().unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let nat_libs: Vec<LibJob> = native_jobs
+            .iter()
+            .map(|(j, _)| LibJob {
+                rel: j.rel.clone(),
+                url: j.url.clone(),
+                sha1: j.sha1.clone(),
+                size: j.size,
+                path: j.path.clone(),
+            })
+            .collect();
+        let _ = fetch_libs(&nat_libs, app, 45.0, 48.0, "Нативные библиотеки…").await;
+        if !natives_up_to_date(&natives_dir, &stamp, deep_verify()) {
+            emit(app, "files", 48.0, "Распаковываем нативные библиотеки…");
+            let items: Vec<(PathBuf, Value)> =
+                native_jobs.iter().map(|(j, rule)| (j.path.clone(), rule.clone())).collect();
+            let nd = natives_dir.clone();
+            let stamp_c = stamp.clone();
+            // Tens of megabytes of inflate must not run on the async runtime.
+            let _ = tokio::task::spawn_blocking(move || {
+                for (jar, rule) in items {
+                    if jar.exists() {
+                        extract_natives(&jar, &nd, &rule);
+                    }
+                }
+                let _ = std::fs::write(natives_stamp_path(&nd), stamp_c.as_bytes());
+            })
+            .await;
+        }
+    }
+
+    let mut main_class = vjson["mainClass"]
+        .as_str()
+        .ok_or_else(|| format!("В описании версии {} нет главного класса", vid))?
+        .to_string();
+    let mut merged = vjson.clone();
+    if loader == "fabric" || loader == "quilt" {
+        let (meta_base, title) = if loader == "quilt" {
+            ("https://meta.quiltmc.org/v3", "Quilt-лоадер…")
+        } else {
+            ("https://meta.fabricmc.net/v2", "Fabric-лоадер…")
+        };
+        emit(app, "files", 52.0, title);
+        let lcache = root.join("loader-cache");
+        let profile_cache = |v: &str| lcache.join(format!("{}-{}-{}-profile.json", loader, vid, v));
+        // A cached profile for a pinned loader build makes the version list
+        // request unnecessary.
+        let ready = loader_version.filter(|v| profile_cache(v).exists()).map(String::from);
+        let loader_v = match ready {
+            Some(v) => v,
+            None => {
+                let loaders = get_json_fresh(
+                    &format!("{}/versions/loader/{}", meta_base, vid),
+                    &lcache.join(format!("{}-{}-list.json", loader, vid)),
+                    LOADER_TTL,
+                ).await?;
+                let arr = loaders.as_array().cloned().unwrap_or_default();
+                // The pinned build wins, but only if meta actually lists it.
+                let pinned = loader_version.filter(|v| {
+                    arr.iter().any(|l| l["loader"]["version"].as_str() == Some(v))
+                }).map(String::from);
+                match pinned {
+                    Some(v) => v,
+                    None => arr
+                        .iter()
+                        .find(|l| l["loader"]["stable"] == true)
+                        .or(arr.first())
+                        .and_then(|l| l["loader"]["version"].as_str())
+                        .ok_or(format!("{} недоступен для этой версии", loader))?
+                        .to_string(),
+                }
+            }
+        };
+        check_loader_version(&loader_v)?;
+        // A profile for a fixed loader build is immutable, so it can be cached.
+        let profile = get_json_immutable(&format!(
+            "{}/versions/loader/{}/{}/profile/json",
+            meta_base, vid, loader_v
+        ), &profile_cache(&loader_v)).await?;
+        main_class = profile["mainClass"]
+            .as_str()
+            .ok_or_else(|| format!("{} не отдал главный класс для {}", loader, vid))?
+            .to_string();
+        let mut ljobs: Vec<LibJob> = vec![];
+        for lib in profile["libraries"].as_array().cloned().unwrap_or_default() {
+            let Some(coord) = lib["name"].as_str() else { continue };
+            let base = lib["url"].as_str().unwrap_or(if loader == "quilt" { "https://maven.quiltmc.org/repository/release/" } else { "https://maven.fabricmc.net/" });
+            let rel = maven_path(coord);
+            ljobs.push(LibJob {
+                url: format!("{}{}", base, rel),
+                path: lib_path(&rel)?,
+                rel,
+                sha1: None,
+                size: None,
+            });
+        }
+        fetch_missing(&ljobs, true).await?;
+        for j in &ljobs {
+            cp_put(&mut cp, &j.rel, j.path.clone());
+        }
+        apply_loader_args(&mut merged, &profile);
+    }
+    // Forge/NeoForge ship a headless installer that lays out libraries and runs
+    // its own patch processors; its version json is read afterwards.
+    if loader == "forge" || loader == "neoforge" {
+        let lcache = root.join("loader-cache");
+        let vdir = root.join("versions");
+        // An already installed loader needs neither the NeoForge version list
+        // nor the Forge promotions file, so launching stays offline-capable.
+        let legacy_neo = loader == "neoforge" && neoforge_on_forge_coords(&vid);
+        let pinned_dir_name = loader_version.map(|pin| if loader == "neoforge" {
+            neoforge_installer(&vid, pin).1
+        } else {
+            format!("{}-forge-{}", vid, pin)
+        });
+        let mut found = match &pinned_dir_name {
+            // A pinned build accepts only an exact match.
+            Some(name) => Some(vdir.join(name)).filter(|d| d.join(format!("{}.json", name)).exists()),
+            // NeoForge 1.20.1 names its dir like Forge does, so a guess by name
+            // would pick up plain Forge: only an exact candidate counts there.
+            None if legacy_neo => None,
+            None => resolve_loader_dir(&vdir, loader, "", &vid),
+        };
+        let mut suspect: Option<(PathBuf, Vec<String>)> = None;
+        let mut unverified: Option<PathBuf> = None;
+        if let Some(dir) = found.clone() {
+            match loader_dir_state(&dir, &libs_root, loader, &vid)? {
+                LoaderDir::Ready => {}
+                LoaderDir::Broken(missing) => suspect = Some((dir, missing)),
+                LoaderDir::Unverified => {
+                    unverified = Some(dir.clone());
+                    suspect = Some((dir, vec![]));
+                }
+            }
+        }
+        if suspect.is_some() {
+            found = None;
+        }
+        let own_installers = suspect.as_ref().and_then(|(dir, _)| {
+            installers_for_dir(loader, &vid, &dir.file_name()?.to_string_lossy())
+        });
+        if found.is_none() {
+            emit(app, "files", 50.0, &format!("{}-инсталлер…", loader));
+            let mut installers: Vec<(String, String)> = if let Some(own) = own_installers {
+                own
+            } else if loader == "neoforge" {
+                /*
+                 * Список версий нужен только чтобы выбрать сборку. Если maven и
+                 * наше зеркало его не отдали, а офлайн-копии нет, сборка с
+                 * закреплённой версией ставится по ней, остальные — по сборкам
+                 * из встроенной таблицы. Раньше любой сбой списка обрывал
+                 * установку, даже когда номер сборки был известен заранее.
+                 */
+                let list = get_json_cached(
+                    &neoforge_versions_url(&vid),
+                    &lcache.join(neoforge_versions_cache(&vid)),
+                ).await;
+                let mut all = list.as_ref().map(|l| neoforge_candidates(l, &vid)).unwrap_or_default();
+                if all.is_empty() {
+                    all = known_builds("neoforge", &vid);
+                }
+                // Releases first, but a branch that only ever shipped
+                // prereleases still has to be installable.
+                let mut cands: Vec<&String> = all.iter().filter(|v| !neoforge_prerelease(v)).collect();
+                if cands.is_empty() { cands = all.iter().collect() }
+                if cands.is_empty() && loader_version.is_none() {
+                    return Err(match list {
+                        Err(e) => format!("Не получили список версий NeoForge: {}", e),
+                        Ok(_) => "NeoForge для этой версии не найден".into(),
+                    });
+                }
+                cands.iter().take(3).map(|nv| neoforge_installer(&vid, nv)).collect()
+            } else {
+                let promos = get_json_cached(
+                    "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json",
+                    &lcache.join("forge-promos.json"),
+                ).await;
+                let mut builds: Vec<String> = vec![];
+                if let Ok(promos) = &promos {
+                    for key in [format!("{}-recommended", vid), format!("{}-latest", vid)] {
+                        if let Some(fv) = promos["promos"][&key].as_str() {
+                            if !builds.iter().any(|b| b == fv) { builds.push(fv.to_string()) }
+                        }
+                    }
+                }
+                // Promotions unreachable: the builds the launcher knows
+                // checksums for are a working answer, not a guess.
+                if builds.is_empty() && promos.is_err() {
+                    builds = known_builds("forge", &vid);
+                }
+                if builds.is_empty() && loader_version.is_none() {
+                    return Err(match promos {
+                        Err(e) => format!("Не получили список сборок Forge: {}", e),
+                        Ok(_) => "Forge для этой версии не найден".into(),
+                    });
+                }
+                builds.iter().flat_map(|fv| forge_installers(&vid, fv)).collect()
+            };
+            // The modpack's pinned build is tried first.
+            if let Some(pin) = loader_version {
+                let pinned = if loader == "neoforge" {
+                    vec![neoforge_installer(&vid, pin)]
+                } else {
+                    forge_installers(&vid, pin)
+                };
+                installers.retain(|(u, _)| !pinned.iter().any(|(pu, _)| pu == u));
+                for (i, entry) in pinned.into_iter().enumerate() {
+                    installers.insert(i, entry);
+                }
+            }
+            // Skip the installer when the profile is already laid out: it takes
+            // up to a minute and needs network.
+            let ver_dir_name = installers
+                .first()
+                .map(|(_, name)| name.clone())
+                .ok_or_else(|| format!("{} для этой версии не найден", loader))?;
+            found = match loader_version {
+                _ if suspect.is_some() => None,
+                _ if legacy_neo => exact_loader_dir(&vdir, &ver_dir_name),
+                // A pinned build must not resolve to a neighbouring one, but the
+                // legacy Forge installer names its dir "<mc>-Forge<build>-<mc>",
+                // so the exact name is a hint rather than the only answer.
+                Some(pin) => resolve_loader_dir(&vdir, loader, &ver_dir_name, &vid)
+                    .filter(|d| d.file_name().is_some_and(|n| n.to_string_lossy().contains(pin))),
+                None => resolve_loader_dir(&vdir, loader, &ver_dir_name, &vid),
+            };
+            if found.is_none() {
+                let java_pre = match java_override.clone() {
+                    Some(j) => j,
+                    None => ensure_java_for(app, java_major_of(&vjson, &vid), &vid).await?,
+                };
+                // The installer refuses to run without launcher_profiles.json.
+                let lp = root.join("launcher_profiles.json");
+                if !lp.exists() { let _ = std::fs::write(&lp, b"{\"profiles\":{},\"version\":3}"); }
+                let mut last_err = String::new();
+                // Имена, которых в репозитории просто нет. Их 404 — не поломка,
+                // а ответ «не это имя», и он не должен заслонять настоящую
+                // причину: последним в списке всегда стоит запасное легаси-имя,
+                // и его «maven не дал контрольную сумму» затирало отказ
+                // инсталлера, который владелец и должен был прочитать.
+                let mut absent: Vec<String> = vec![];
+                let mut profile_read = false;
+                for (inst_url, name) in &installers {
+                    // Name carries the build, otherwise one installer file would
+                    // be reused for every build.
+                    let inst = data_dir().join("tmp").join(format!("{}-installer.jar", name));
+                    // The installer is executed by a JVM, so it is only accepted
+                    // with the maven-published sha1.
+                    let sha1 = match installer_sha1(inst_url).await {
+                        Ok(sum) => sum,
+                        Err(MavenMiss::Absent) => {
+                            absent.push(name.clone());
+                            continue;
+                        }
+                        Err(MavenMiss::Unreachable(e)) => {
+                            last_err = format!("{}: не дошли до maven за контрольной суммой инсталлера ({})", name, e);
+                            continue;
+                        }
+                    };
+                    if let Err(e) = download_checked(inst_url, &inst, Some(Sum::Sha1(&sha1)), None).await {
+                        let _ = std::fs::remove_file(&inst);
+                        last_err = e;
+                        continue;
+                    }
+                    emit(app, "files", 60.0, "Ставим загрузчик (может занять минуту)…");
+                    // A pre-1.13 profile is laid out here: its installer would
+                    // only answer that it does not know `--installClient`.
+                    let (ip, vd, lb) = (inst.clone(), vdir.clone(), libs_root.clone());
+                    let laid = tokio::task::spawn_blocking(move || {
+                        let legacy = install_legacy_forge(&ip, &vd, &lb)?;
+                        let (outputs, downloads) = match legacy {
+                            Some(_) => (vec![], vec![]),
+                            None => {
+                                let profile = read_install_profile(&ip)?;
+                                let version = read_installer_version_json(&ip, &profile);
+                                (install_outputs(&profile), installer_downloads(&profile, version.as_ref()))
+                            }
+                        };
+                        Ok::<_, String>((legacy, outputs, downloads))
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    let (outputs, downloads) = match laid {
+                        Ok((Some(dir), outputs, _)) => {
+                            let _ = std::fs::remove_file(&inst);
+                            record_outputs(&dir, &outputs)?;
+                            found = Some(dir);
+                            break;
+                        }
+                        Ok((None, outputs, downloads)) => (outputs, downloads),
+                        Err(e) => {
+                            let _ = std::fs::remove_file(&inst);
+                            last_err = format!("{}: {}", name, e);
+                            continue;
+                        }
+                    };
+                    profile_read = true;
+                    let laid_out = vdir.join(name);
+                    if laid_out.join(format!("{}.json", name)).exists() && missing_outputs(&libs_root, &outputs)?.is_empty() {
+                        let _ = std::fs::remove_file(&inst);
+                        record_outputs(&laid_out, &outputs)?;
+                        found = Some(laid_out);
+                        break;
+                    }
+                    let prefetch: Vec<LibJob> = downloads
+                        .into_iter()
+                        .filter_map(|(rel, url, sha1, size)| {
+                            Some(LibJob { path: lib_path(&rel).ok()?, rel, url, sha1: Some(sha1), size })
+                        })
+                        .collect();
+                    // Best effort: whatever did not arrive here the installer
+                    // still tries itself and names in its own failure.
+                    let _ = fetch_libs(&prefetch, app, 60.0, 60.0, "Библиотеки загрузчика…").await;
+                    emit(app, "files", 60.0, "Ставим загрузчик (может занять минуту)…");
+                    let (jp, ip, rp) = (java_pre.clone(), inst.clone(), root.clone());
+                    // The installer's own output is the only account of why it
+                    // gave up - it exits 1 for a blocked maven, a read-only
+                    // directory and a corrupt profile alike.
+                    // The installer's processors download libraries themselves, and
+                    // Java skips the system proxy a VPN sets unless asked to use it.
+                    let out = tokio::task::spawn_blocking(move || {
+                        quiet(&mut Command::new(&jp)).arg("-Djava.net.useSystemProxies=true")
+                            .arg("-jar").arg(&ip).arg("--installClient").arg(&rp)
+                            .current_dir(&rp).output()
+                            .map_err(|e| spawn_failure(&e, &jp).replacen("Запуск Java", "Инсталлер загрузчика: запуск Java", 1))
+                    }).await.map_err(|e| e.to_string())??;
+                    let _ = std::fs::remove_file(&inst);
+                    if !out.status.success() {
+                        last_err = installer_failure(&out);
+                        continue;
+                    }
+                    found = if legacy_neo {
+                        exact_loader_dir(&vdir, name)
+                    } else {
+                        resolve_loader_dir(&vdir, loader, name, &vid)
+                    };
+                    let Some(dir) = found.clone() else {
+                        last_err = format!("Инсталлер отработал, но профиль {} не появился", name);
+                        continue;
+                    };
+                    let missing = missing_outputs(&libs_root, &outputs)?;
+                    if missing.is_empty() {
+                        record_outputs(&dir, &outputs)?;
+                        break;
+                    }
+                    found = None;
+                    last_err = format!(
+                        "Инсталлер {} завершился без ошибки, но не создал {} — проверь, что антивирус не удаляет файлы из папки игры, и запусти ещё раз",
+                        name,
+                        missing.join(", ")
+                    );
+                }
+                if found.is_none() {
+                    found = unverified.filter(|_| !profile_read);
+                }
+                if found.is_none() {
+                    let reason = installer_giveup(loader, &last_err, &absent);
+                    return Err(match suspect {
+                        Some((_, missing)) if !missing.is_empty() => format!(
+                            "{} установлен не полностью (нет {}), а переустановить не получилось: {}",
+                            loader,
+                            missing.join(", "),
+                            reason
+                        ),
+                        _ => reason,
+                    });
+                }
+            }
+        }
+        let dir = found.ok_or("Не нашли профиль загрузчика".to_string())?;
+        let jname = format!(
+            "{}.json",
+            dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+        );
+        let lj: Value = serde_json::from_slice(&std::fs::read(dir.join(&jname)).map_err(|_| "Не нашли профиль загрузчика".to_string())?)
+            .map_err(|e| e.to_string())?;
+        main_class = lj["mainClass"].as_str().unwrap_or(&main_class).to_string();
+        // The installer already laid out most libraries; classpath order comes
+        // from its version json.
+        let mut ljobs: Vec<LibJob> = vec![];
+        for lib in lj["libraries"].as_array().cloned().unwrap_or_default() {
+            if !rules_allow(&lib["rules"]) { continue }
+            if let Some(art) = lib["downloads"]["artifact"].as_object() {
+                let rel = art["path"].as_str().unwrap_or("").to_string();
+                if rel.is_empty() { continue }
+                let p = lib_path(&rel)?;
+                let url = art["url"].as_str().unwrap_or("").to_string();
+                ljobs.push(LibJob { rel, url, sha1: None, size: None, path: p });
+            } else if let Some(name) = lib["name"].as_str() {
+                let rel = maven_path(name);
+                let p = lib_path(&rel)?;
+                let base = maven_base(lib["url"].as_str().unwrap_or("https://libraries.minecraft.net/"));
+                ljobs.push(LibJob { url: format!("{}{}", base, rel), path: p, rel, sha1: None, size: None });
+            }
+        }
+        let _ = fetch_missing(&ljobs, false).await;
+        for j in &ljobs {
+            if j.path.exists() { cp_put(&mut cp, &j.rel, j.path.clone()); }
+        }
+        apply_loader_args(&mut merged, &lj);
+    }
+
+    let mut classpath: Vec<PathBuf> = cp.into_iter().map(|(_, p)| p).collect();
+    classpath.push(client_jar);
+
+    if let Some(dir) = ensure_assets(app, &root, &vjson, &vid).await? {
+        merged["copperGameAssets"] = Value::String(dir.to_string_lossy().to_string());
+    }
+
+    if needs_log4j_config(vjson["id"].as_str().unwrap_or_default()) {
+        if let Some(arg) = ensure_log4j_config(&vjson, &root).await {
+            merged["copperLog4jArg"] = Value::String(arg);
+        }
+    }
+
+    let java = match java_override {
+        Some(j) => j,
+        None => ensure_java_for(app, java_major_of(&vjson, &vid), &vid).await?,
+    };
+
+    Ok((merged, main_class, classpath, java))
+}
+
+/// Mojang's description of a vanilla version: the cached copy when there is
+/// one, otherwise looked up through the version manifest.
+pub(crate) async fn vanilla_meta(app: &AppHandle, root: &Path, version_id: &str) -> Result<(String, Value), String> {
+    // Version metadata is content-addressed, so a cached copy is always current
+    // and the Mojang manifest is only needed to discover its URL.
+    let cached_meta = |vid: &str| -> Option<Value> {
+        serde_json::from_slice(
+            &std::fs::read(root.join("versions").join(vid).join(format!("{}-meta.json", vid))).ok()?,
+        )
+        .ok()
+    };
+    Ok(match (version_id != "latest").then(|| cached_meta(version_id)).flatten() {
+        Some(v) => (version_id.to_string(), v),
+        None => {
+            emit(app, "files", 5.0, "Читаем манифест версий…");
+            let manifest = get_json_fresh(MANIFEST, &root.join("version_manifest_v2.json"), MANIFEST_TTL).await?;
+            let vid = if version_id == "latest" {
+                manifest["latest"]["release"].as_str().unwrap_or("1.21.4").to_string()
+            } else {
+                version_id.to_string()
+            };
+            let ventry = manifest["versions"]
+                .as_array()
+                .and_then(|a| a.iter().find(|v| v["id"] == vid.as_str()))
+                .ok_or(format!("Версия {} не найдена", vid))?;
+            let vurl = ventry["url"]
+                .as_str()
+                .ok_or_else(|| format!("Манифест Mojang не дал ссылку на версию {}", vid))?;
+            let vjson =
+                get_json_immutable(vurl, &root.join("versions").join(&vid).join(format!("{}-meta.json", vid))).await?;
+            (vid, vjson)
+        }
+    })
+}
+
+/// Downloads the asset objects of a vanilla version into the shared store.
+/// Returns the laid-out directory for the old virtual indexes, which read
+/// assets by name instead of by hash.
+pub(crate) async fn ensure_assets(
+    app: &AppHandle,
+    root: &Path,
+    vjson: &Value,
+    vid: &str,
+) -> Result<Option<PathBuf>, String> {
+    emit(app, "assets", 55.0, "Ассеты игры…");
+    check_cancel()?;
+    let (Some(aidx_url), Some(aidx_id)) = (vjson["assetIndex"]["url"].as_str(), vjson["assetIndex"]["id"].as_str())
+    else {
+        return Err(format!("В описании версии {} нет индекса ассетов", vid));
+    };
+    let idx_path = root.join("assets/indexes").join(format!("{}.json", aidx_id));
+    let aidx = get_json_immutable(aidx_url, &idx_path).await?;
+    // Marker avoids walking the whole object store (thousands of files) on every
+    // launch once the index has been fully downloaded.
+    let done_marker = root.join("assets/indexes").join(format!("{}.done", aidx_id));
+    if !done_marker.exists() || deep_verify() {
+        let objects: Vec<(String, String, Option<u64>)> = aidx["objects"]
+            .as_object()
+            .map(|o| {
+                o.values()
+                    .filter_map(|v| {
+                        let h = v["hash"].as_str()?;
+                        Some((h.get(0..2)?.to_string(), h.to_string(), v["size"].as_u64()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let total_a = objects.len().max(1);
+        // One blocking pass over the store collects what is missing before any
+        // async task is spawned; deep verify also rejects truncated objects.
+        let obj_root = root.join("assets/objects");
+        let deep = deep_verify();
+        // Several index entries can point at one object: downloading the same
+        // destination twice in parallel is a race, not extra work.
+        let missing: Vec<(String, String)> = tokio::task::spawn_blocking(move || {
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            objects
+                .into_iter()
+                .filter(|(_, hash, _)| seen.insert(hash.clone()))
+                .filter(|(pre, hash, size)| {
+                    let Ok(md) = std::fs::metadata(obj_root.join(pre).join(hash)) else { return true };
+                    deep && size.is_some_and(|want| md.len() != want)
+                })
+                .map(|(pre, hash, _)| (pre, hash))
+                .collect()
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        let need = missing.len();
+        if need > 0 {
+            emit(app, "assets", 55.0, &format!("Ассеты игры: докачиваем {}…", need));
+        }
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let root_c = root.to_path_buf();
+        let step = (need / 20).max(1);
+        let failed: Vec<bool> = futures::stream::iter(missing.into_iter().map(|(pre, hash)| {
+            let root = root_c.clone();
+            let done = done.clone();
+            let app = app.clone();
+            async move {
+                if cancelled() {
+                    return true;
+                }
+                let dest = root.join("assets/objects").join(&pre).join(&hash);
+                // An asset object's name is its sha1.
+                let bad = download_checked(&format!("{}/{}/{}", RESOURCES, pre, hash), &dest, Some(Sum::Sha1(&hash)), None)
+                    .await
+                    .is_err();
+                let d = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                if d.is_multiple_of(step) || d == need {
+                    emit(&app, "assets", 55.0 + 30.0 * (d as f32 / need as f32),
+                         &format!("Ассеты {}/{}", total_a - need + d, total_a));
+                }
+                bad
+            }
+        }))
+        .buffer_unordered(PARALLEL_ASSETS)
+        .collect::<Vec<_>>()
+        .await;
+        if !failed.iter().any(|b| *b) {
+            let _ = std::fs::write(&done_marker, b"ok");
+        }
+        check_cancel()?;
+    }
+
+    if assets_are_virtual(&aidx) {
+        emit(app, "assets", 86.0, "Раскладываем ассеты старой версии…");
+        let (idx, r, id) = (aidx.clone(), root.to_path_buf(), aidx_id.to_string());
+        let dir = tokio::task::spawn_blocking(move || build_virtual_assets(&idx, &r, &id))
+            .await
+            .map_err(|e| e.to_string())??;
+        return Ok(Some(dir));
+    }
+    Ok(None)
+}
+
+/// `formatMsgNoLookups` exists since log4j 2.10, i.e. Minecraft 1.12+, where
+/// Mojang's replacement config adds no protection but does force XML output.
+/// Only pre-1.12 versions get it; unparsable ids are treated as old.
+pub(crate) fn needs_log4j_config(id: &str) -> bool {
+    let mut parts = id.split('.');
+    let (major, minor) = (parts.next().unwrap_or_default(), parts.next().unwrap_or_default());
+    match (major.parse::<u32>(), minor.parse::<u32>()) {
+        (Ok(1), Ok(m)) => m < 12,
+        _ => true,
+    }
+}
+
+async fn ensure_log4j_config(vjson: &Value, root: &Path) -> Option<String> {
+    let logging = vjson["logging"]["client"].as_object()?;
+    let file = logging.get("file")?;
+    let id = file["id"].as_str()?;
+    let url = file["url"].as_str()?;
+    let name = safe_file_name(id).ok()?;
+    let dest = safe_child(&root.join("assets").join("log_configs"), &name).ok()?;
+    download_new(url, &dest, file["sha1"].as_str().map(Sum::Sha1), file["size"].as_u64())
+        .await
+        .ok()?;
+    let arg = logging
+        .get("argument")
+        .and_then(|a| a.as_str())
+        .unwrap_or("-Dlog4j.configurationFile=${path}");
+    Some(arg.replace("${path}", &dest.to_string_lossy()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn output(code: i32, stdout: &str, stderr: &str) -> std::process::Output {
+        #[cfg(unix)]
+        let status = std::os::unix::process::ExitStatusExt::from_raw(code);
+        #[cfg(windows)]
+        let status = std::os::windows::process::ExitStatusExt::from_raw(code as u32);
+        std::process::Output { status, stdout: stdout.as_bytes().to_vec(), stderr: stderr.as_bytes().to_vec() }
+    }
+
+    #[test]
+    fn installer_failure_reports_what_the_installer_said() {
+        let net = "Exception: java.net.UnknownHostException: maven.minecraftforge.net";
+        let said = installer_failure(&output(1, "", net));
+        assert!(said.contains("maven.minecraftforge.net"), "the blocked host is the whole diagnosis, got {said:?}");
+
+        let only_stdout = installer_failure(&output(1, "Failed to download library", ""));
+        assert!(only_stdout.contains("Failed to download library"), "installers print to stdout too, got {only_stdout:?}");
+
+        let mute = installer_failure(&output(1, "  
+", ""));
+        assert!(!mute.contains(':'), "with nothing said the message must not end in a dangling colon, got {mute:?}");
+
+        let noisy = "a
+b
+c
+d
+e";
+        let tail = installer_failure(&output(1, "", noisy));
+        assert!(tail.contains("c / d / e") && !tail.contains('a'), "only the last lines carry the cause, got {tail:?}");
+    }
+
+    /// 13.09.2026: игрок на 1.21.10 читал «1.21.10-forge-60.1.15: maven не дал
+    /// контрольную сумму инсталлера» на КАЖДОЙ поломке установки Forge.
+    /// Последним в списке всегда идёт запасное легаси-имя, которого для новых
+    /// версий не существует, и его 404 затирал отказ самого инсталлера — то
+    /// единственное, что говорило, что на самом деле случилось.
+    #[test]
+    fn a_missing_name_never_hides_a_real_failure() {
+        let absent = vec!["1.21.10-forge-60.1.15".to_string()];
+        assert_eq!(
+            installer_giveup("forge", "1.21.10-forge-60.1.0: инсталлер не смог", &absent),
+            "1.21.10-forge-60.1.0: инсталлер не смог",
+            "отказ инсталлера обязан дойти до игрока, а не утонуть в 404 запасного имени"
+        );
+        assert_eq!(
+            installer_giveup("forge", "", &absent),
+            "1.21.10-forge-60.1.15: такого билда нет в репозитории загрузчика",
+            "когда в репозитории правда нет ни одного имени, так и надо сказать"
+        );
+        assert_eq!(
+            installer_giveup("neoforge", "", &[]),
+            "neoforge для этой версии не найден",
+            "без единого кандидата остаётся общий ответ"
+        );
+    }
+
+    /// Forge up to 1.9.4 lives under `<mc>-<build>-<mc>`, later builds under
+    /// `<mc>-<build>`: offering only one name left every legacy modpack stuck on
+    /// "maven не дал контрольную сумму инсталлера".
+    #[test]
+    fn legacy_forge_gets_both_installer_names() {
+        let legacy = forge_installers("1.7.10", "10.13.4.1614");
+        assert_eq!(legacy.len(), 2, "оба варианта имени обязаны попасть в список");
+        assert!(
+            legacy[0].0.ends_with("/1.7.10-10.13.4.1614/forge-1.7.10-10.13.4.1614-installer.jar"),
+            "современное имя пробуется первым: {}",
+            legacy[0].0
+        );
+        assert!(
+            legacy[1].0.ends_with("/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10-installer.jar"),
+            "легаси-имя с повтором версии игры обязано быть запасным: {}",
+            legacy[1].0
+        );
+        assert!(
+            legacy.iter().all(|(_, name)| name == "1.7.10-forge-10.13.4.1614"),
+            "имя папки версии от варианта ссылки не зависит"
+        );
+    }
+
+    /// Mojang only publishes `javaVersion` from 1.17 on. Answering 21 for the
+    /// versions that lack it handed 1.6.4 a runtime it cannot start on, and the
+    /// build died before the Forge installer even ran.
+    #[test]
+    fn missing_java_version_falls_back_to_what_the_game_needs() {
+        let modern = serde_json::json!({ "javaVersion": { "majorVersion": 21 } });
+        assert_eq!(java_major_of(&modern, "1.21.4"), 21, "объявленное значение всегда сильнее догадки");
+        let legacy = serde_json::json!({ "id": "1.6.4" });
+        assert_eq!(java_major_of(&legacy, "1.6.4"), 8, "без поля решает версия игры, а не «поставим самую новую»");
+        assert_eq!(java_major_of(&serde_json::json!({}), "1.18.2"), 17);
+        assert_eq!(java_major_of(&serde_json::json!({}), "1.20.6"), 21);
+    }
+
+    /// Indexes up to `legacy` address objects by file name: those versions need
+    /// the store laid out, and the modern ones must never pay for it.
+    #[test]
+    fn only_old_indexes_are_virtual() {
+        assert!(assets_are_virtual(&serde_json::json!({ "virtual": true })), "1.6.4 и 1.7.2");
+        assert!(assets_are_virtual(&serde_json::json!({ "map_to_resources": true })), "pre-1.6");
+        assert!(!assets_are_virtual(&serde_json::json!({ "objects": {} })), "1.7.10 и новее читают object store");
+    }
+
+    #[test]
+    fn virtual_assets_are_laid_out_under_their_real_names() {
+        let root = std::env::temp_dir().join("copper-virtual-assets-test");
+        let _ = std::fs::remove_dir_all(&root);
+        let obj = root.join("assets/objects/0d");
+        std::fs::create_dir_all(&obj).unwrap();
+        let hash = "0d000710b71ca9aafabd8f587768431d0b560b32";
+        std::fs::write(obj.join(hash), b"hello").unwrap();
+        let index = serde_json::json!({
+            "virtual": true,
+            "objects": { "lang/en_US.lang": { "hash": hash, "size": 5 } },
+        });
+
+        let dir = build_virtual_assets(&index, &root, "legacy").unwrap();
+        assert_eq!(
+            std::fs::read(dir.join("lang/en_US.lang")).unwrap(),
+            b"hello",
+            "объект обязан лечь под своим настоящим именем, иначе старая версия не найдёт ни языка, ни звуков"
+        );
+        assert!(build_virtual_assets(&index, &root, "legacy").is_ok(), "повторный запуск не должен ломаться");
+    }
+
+    #[test]
+    fn log4j_config_only_for_pre_1_12() {
+        assert!(needs_log4j_config("1.7.10"));
+        assert!(needs_log4j_config("1.11.2"));
+        assert!(!needs_log4j_config("1.12.2"));
+        assert!(!needs_log4j_config("1.21.4"));
+        assert!(needs_log4j_config("13w39a"));
+    }
+
+    fn legacy_installer(dir: &std::path::Path, packed: &str, id: &str, coord: &str) -> PathBuf {
+        use std::io::Write;
+        let jar = dir.join(format!("installer-{}.jar", id.replace(['/', '\\', '.', ':'], "_")));
+        let f = std::fs::File::create(&jar).unwrap();
+        let mut z = zip::ZipWriter::new(f);
+        let opts: zip::write::SimpleFileOptions = Default::default();
+        let profile = serde_json::json!({
+            "install": { "path": coord, "filePath": packed },
+            "versionInfo": { "id": id, "inheritsFrom": "1.7.10", "mainClass": "net.minecraft.launchwrapper.Launch" }
+        });
+        z.start_file("install_profile.json", opts).unwrap();
+        z.write_all(serde_json::to_string(&profile).unwrap().as_bytes()).unwrap();
+        z.start_file(packed, opts).unwrap();
+        z.write_all(b"core").unwrap();
+        z.finish().unwrap();
+        jar
+    }
+
+    /// Every Forge build for MC 1.12.1 and older ships an installer that does not
+    /// know `--installClient`, so the launcher has to lay the profile out itself:
+    /// the version json under its own name and the core jar at its maven path.
+    #[test]
+    fn legacy_forge_is_installed_without_its_installer() {
+        let base = std::env::temp_dir().join(format!("copper-legacy-forge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (vdir, libs) = (base.join("versions"), base.join("libraries"));
+        std::fs::create_dir_all(&vdir).unwrap();
+        let id = "1.7.10-Forge10.13.4.1614-1.7.10";
+        let jar = legacy_installer(&base, "forge-universal.jar", id, "net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10");
+
+        let dir = install_legacy_forge(&jar, &vdir, &libs).unwrap().expect("легаси-профиль обязан ставиться сам");
+
+        assert_eq!(dir, vdir.join(id), "профиль кладётся в папку со своим id");
+        let written: Value = serde_json::from_slice(&std::fs::read(dir.join(format!("{}.json", id))).unwrap()).unwrap();
+        assert_eq!(written["inheritsFrom"], "1.7.10", "versionInfo и есть version json сборки");
+        let core = libs.join("net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10.jar");
+        assert_eq!(std::fs::read(&core).unwrap(), b"core", "ядро Forge есть только внутри инсталлера: maven его не отдаёт");
+        assert!(!vdir.join(id).join(format!("{}.{}.part", id, std::process::id())).exists(), "временных файлов после установки не остаётся");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A profile with processors (MC 1.13+ and late 1.12.2 builds) is patched by
+    /// the installer itself — copying its files would produce a build that never
+    /// gets the patched Minecraft jar.
+    #[test]
+    fn modern_forge_profile_is_left_to_its_installer() {
+        let base = std::env::temp_dir().join(format!("copper-modern-forge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let jar = base.join("installer.jar");
+        {
+            use std::io::Write;
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&jar).unwrap());
+            let opts: zip::write::SimpleFileOptions = Default::default();
+            z.start_file("install_profile.json", opts).unwrap();
+            z.write_all(br#"{"spec":1,"processors":[],"libraries":[]}"#).unwrap();
+            z.finish().unwrap();
+        }
+        assert!(
+            install_legacy_forge(&jar, &base.join("versions"), &base.join("libraries")).unwrap().is_none(),
+            "современный профиль ставит только его собственный инсталлер"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The profile is read out of a downloaded archive: its id names the version
+    /// directory, its maven coordinates name the jar path. A profile that walks
+    /// out of `versions/` or `libraries/` has to be refused.
+    #[test]
+    fn legacy_profile_may_not_walk_out_of_the_game_folder() {
+        let base = std::env::temp_dir().join(format!("copper-legacy-escape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let (vdir, libs) = (base.join("versions"), base.join("libraries"));
+
+        let by_id = legacy_installer(&base, "core.jar", "../../evil", "net.minecraftforge:forge:1.7.10");
+        assert!(install_legacy_forge(&by_id, &vdir, &libs).is_err(), "id решает, где окажется профиль");
+        let by_coord = legacy_installer(&base, "core.jar", "1.7.10-forge", "..:..:..");
+        assert!(install_legacy_forge(&by_coord, &vdir, &libs).is_err(), "координаты решают, где окажется ядро");
+        assert!(!base.join("evil").exists() && !base.join("evil.jar").exists(), "за пределы папки игры не записано ничего");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn forge_1_20_1_profile() -> Value {
+        serde_json::json!({
+            "data": {
+                "MAPPINGS": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412:mappings@txt]" },
+                "MOJMAPS": { "client": "[net.minecraft:client:1.20.1-20230612.114412:mappings@txt]" },
+                "MERGED_MAPPINGS": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412:mappings-merged@txt]" },
+                "BINPATCH": { "client": "/data/client.lzma" },
+                "MC_UNPACKED": { "client": "[net.minecraft:client:1.20.1-20230612.114412:unpacked]" },
+                "MC_SLIM": { "client": "[net.minecraft:client:1.20.1-20230612.114412:slim]" },
+                "MC_SLIM_SHA": { "client": "'de86b035d2da0f78940796bb95c39a932ed84834'" },
+                "MC_EXTRA": { "client": "[net.minecraft:client:1.20.1-20230612.114412:extra]" },
+                "MC_SRG": { "client": "[net.minecraft:client:1.20.1-20230612.114412:srg]" },
+                "PATCHED": { "client": "[net.minecraftforge:forge:1.20.1-47.4.10:client]" },
+                "MCP_VERSION": { "client": "'20230612.114412'" }
+            },
+            "processors": [
+                { "sides": ["server"], "args": ["--task", "BUNDLER_EXTRACT", "--input", "{MINECRAFT_JAR}", "--output", "{MC_UNPACKED}", "--jar-only"] },
+                { "args": ["--task", "MCP_DATA", "--input", "[de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412@zip]", "--output", "{MAPPINGS}", "--key", "mappings"] },
+                { "args": ["--task", "DOWNLOAD_MOJMAPS", "--version", "1.20.1", "--side", "{SIDE}", "--output", "{MOJMAPS}"] },
+                { "args": ["--task", "MERGE_MAPPING", "--left", "{MAPPINGS}", "--right", "{MOJMAPS}", "--output", "{MERGED_MAPPINGS}"] },
+                { "sides": ["client"], "args": ["--input", "{MINECRAFT_JAR}", "--slim", "{MC_SLIM}", "--extra", "{MC_EXTRA}", "--srg", "{MERGED_MAPPINGS}"] },
+                { "sides": ["server"], "args": ["--input", "{MC_UNPACKED}", "--slim", "{MC_SLIM}", "--extra", "{MC_EXTRA}"] },
+                { "args": ["--input", "{MC_SLIM}", "--output", "{MC_SRG}", "--names", "{MERGED_MAPPINGS}"] },
+                { "args": ["--clean", "{MC_SRG}", "--output", "{PATCHED}", "--apply", "{BINPATCH}"] }
+            ]
+        })
+    }
+
+    /// The three jars FML could not find in the Immortal crash log
+    /// ("Invalid paths argument, contained no existing paths") are exactly the
+    /// processor outputs a half-finished installer leaves missing.
+    const IMMORTAL_CRASH_JARS: [&str; 3] = [
+        "net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-srg.jar",
+        "net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-extra.jar",
+        "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-client.jar",
+    ];
+
+    #[test]
+    fn processor_outputs_cover_what_fml_loads_and_skip_server_steps() {
+        let outputs = processor_outputs(&forge_1_20_1_profile());
+        let cases: [(&str, bool, &str); 7] = [
+            (IMMORTAL_CRASH_JARS[0], true, "srg-клиент грузит FML: без него игра падает на старте"),
+            (IMMORTAL_CRASH_JARS[1], true, "extra-часть клиента грузит FML"),
+            (IMMORTAL_CRASH_JARS[2], true, "пропатченный клиент Forge — последний шаг процессоров"),
+            ("net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-mappings.txt", true, "@txt даёт .txt, а не .jar"),
+            ("de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412/mcp_config-1.20.1-20230612.114412.zip", true, "координаты прямо в аргументе тоже учитываются"),
+            ("net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-unpacked.jar", false, "серверный шаг на клиенте не выполняется — его файл не ждём, иначе переустановка по кругу"),
+            ("data/client.lzma", false, "путь внутри инсталлера — не файл библиотеки"),
+        ];
+        for (rel, expected, why) in cases {
+            assert_eq!(outputs.iter().any(|o| o == rel), expected, "{}: {}", rel, why);
+        }
+        assert_eq!(outputs.len(), outputs.iter().collect::<std::collections::HashSet<_>>().len(), "файл, упомянутый несколькими шагами, проверяется один раз");
+    }
+
+    #[test]
+    fn install_outputs_include_the_jars_only_the_installer_downloads() {
+        let mut profile = forge_1_20_1_profile();
+        profile["libraries"] = serde_json::json!([
+            { "name": "net.minecraftforge:forge:1.20.1-47.4.10:universal", "downloads": { "artifact": { "path": "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar" } } },
+            { "name": "net.minecraftforge:fmlcore:1.20.1-47.4.10" },
+            { "name": "net.minecraftforge:mclanguage:1.20.1-47.4.10", "downloads": { "artifact": { "path": "" } } },
+        ]);
+        let outputs = install_outputs(&profile);
+        let cases: [(&str, &str); 5] = [
+            ("net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar", "без universal FML падает «Invalid paths argument» (Immortal 3.0.1, 25.09)"),
+            ("net/minecraftforge/fmlcore/1.20.1-47.4.10/fmlcore-1.20.1-47.4.10.jar", "без пути в downloads берётся путь по координатам"),
+            ("net/minecraftforge/mclanguage/1.20.1-47.4.10/mclanguage-1.20.1-47.4.10.jar", "пустой путь в downloads не прячет библиотеку"),
+            (IMMORTAL_CRASH_JARS[0], "выходы процессоров по-прежнему проверяются"),
+            (IMMORTAL_CRASH_JARS[2], "пропатченный клиент по-прежнему проверяется"),
+        ];
+        for (rel, why) in cases {
+            assert!(outputs.iter().any(|o| o == rel), "{} должен проверяться: {}", rel, why);
+        }
+        assert_eq!(outputs.len(), outputs.iter().collect::<std::collections::HashSet<_>>().len(), "каждый файл проверяется один раз");
+    }
+
+    /// A Forge 1.16.5 installer that cannot reach maven dies on
+    /// "org.ow2.asm:asm:9.3 / trove:trove:1.0.2". Every library with an address
+    /// and a sha1 is fetched before it runs; the rest is left to it.
+    #[test]
+    fn installer_libraries_are_fetched_ahead_only_with_a_hash() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let profile = serde_json::json!({ "libraries": [
+            { "downloads": { "artifact": { "path": "org/ow2/asm/asm/9.3/asm-9.3.jar", "url": "https://maven.minecraftforge.net/org/ow2/asm/asm/9.3/asm-9.3.jar", "sha1": sha, "size": 10 } } },
+            { "downloads": { "artifact": { "path": "net/minecraftforge/forge/1.16.5-36.2.42/forge-1.16.5-36.2.42.jar", "url": "", "sha1": sha } } },
+            { "downloads": { "artifact": { "path": "a/b/1/b-1.jar", "url": "https://maven.minecraftforge.net/a/b/1/b-1.jar" } } },
+            { "name": "x:y:1" },
+        ]});
+        let version = serde_json::json!({ "libraries": [
+            { "downloads": { "artifact": { "path": "trove/trove/1.0.2/trove-1.0.2.jar", "url": "https://maven.minecraftforge.net/trove/trove/1.0.2/trove-1.0.2.jar", "sha1": sha } } },
+            { "downloads": { "artifact": { "path": "org/ow2/asm/asm/9.3/asm-9.3.jar", "url": "https://maven.minecraftforge.net/org/ow2/asm/asm/9.3/asm-9.3.jar", "sha1": sha } } },
+        ]});
+        let got: Vec<String> = installer_downloads(&profile, Some(&version)).into_iter().map(|(rel, ..)| rel).collect();
+        let cases: [(&str, bool, &str); 5] = [
+            ("org/ow2/asm/asm/9.3/asm-9.3.jar", true, "библиотека профиля инсталлера с адресом и суммой"),
+            ("trove/trove/1.0.2/trove-1.0.2.jar", true, "библиотека из version.json внутри инсталлера"),
+            ("net/minecraftforge/forge/1.16.5-36.2.42/forge-1.16.5-36.2.42.jar", false, "без адреса — инсталлер берёт её из себя"),
+            ("a/b/1/b-1.jar", false, "без суммы инсталлер не узнает файл и скачает заново"),
+            ("x/y/1/y-1.jar", false, "без downloads качать не по чему"),
+        ];
+        for (rel, want, why) in cases {
+            assert_eq!(got.iter().any(|r| r == rel), want, "{}: {}", rel, why);
+        }
+        assert_eq!(got.len(), 2, "библиотека из обоих списков качается один раз: {:?}", got);
+    }
+
+    #[test]
+    fn profile_without_processors_expects_nothing() {
+        let cases: [(Value, &str); 2] = [
+            (serde_json::json!({ "versionInfo": { "id": "1.7.10-Forge10.13.4.1614-1.7.10" } }), "легаси-профиль ставится без процессоров"),
+            (serde_json::json!({ "processors": [], "data": {} }), "пустой список процессоров ничего не создаёт"),
+        ];
+        for (profile, why) in cases {
+            assert!(processor_outputs(&profile).is_empty(), "{}", why);
+        }
+    }
+
+    fn forge_1_12_2_profile() -> Value {
+        serde_json::json!({
+            "spec": 0,
+            "version": "1.12.2-forge-14.23.5.2859",
+            "data": {},
+            "processors": [],
+            "libraries": [
+                { "name": "de.oceanlabs.mcp:mcp_config:1.12.2-20200226.224830@zip", "downloads": { "artifact": { "path": "de/oceanlabs/mcp/mcp_config/1.12.2-20200226.224830/mcp_config-1.12.2-20200226.224830.zip" } } },
+                { "name": "net.minecraftforge:forge:1.12.2-14.23.5.2859", "downloads": { "artifact": { "path": "net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859.jar", "url": "" } } }
+            ]
+        })
+    }
+
+    #[test]
+    fn install_outputs_by_forge_version() {
+        let mut modern = forge_1_20_1_profile();
+        modern["libraries"] = serde_json::json!([
+            { "name": "net.minecraftforge:forge:1.20.1-47.4.10:universal", "downloads": { "artifact": { "path": "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar" } } }
+        ]);
+        let mcp_1_12_2 = "de/oceanlabs/mcp/mcp_config/1.12.2-20200226.224830/mcp_config-1.12.2-20200226.224830.zip";
+        let cases: [(&str, Value, &str, bool, &str); 5] = [
+            ("1.12.2-14.23.5.2859", forge_1_12_2_profile(), mcp_1_12_2, false, "инсталлер 2.x без процессоров не качает свои библиотеки — ждать mcp_config значит ронять каждую установку 1.12.2"),
+            ("1.12.2-14.23.5.2859", forge_1_12_2_profile(), "net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859.jar", false, "ядро 1.12.2 приходит через version.json и докачивается лаунчером, а не проверкой инсталлера"),
+            ("1.7.10-10.13.4.1614", serde_json::json!({ "versionInfo": { "id": "1.7.10-Forge10.13.4.1614-1.7.10" }, "install": { "path": "net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10" } }), "net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10.jar", false, "легаси-профиль ставит сам лаунчер, инсталлер не запускается"),
+            ("1.20.1-47.4.10", modern.clone(), "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar", true, "у профиля с процессорами библиотеки инсталлера по-прежнему проверяются (Immortal, 25.09)"),
+            ("1.20.1-47.4.10", modern, IMMORTAL_CRASH_JARS[2], true, "выходы процессоров по-прежнему проверяются"),
+        ];
+        for (build, profile, rel, expected, why) in cases {
+            assert_eq!(install_outputs(&profile).iter().any(|o| o == rel), expected, "Forge {} / {}: {}", build, rel, why);
+        }
+    }
+
+    #[test]
+    fn maven_path_honours_the_extension_suffix() {
+        let cases: [(&str, &str, &str); 4] = [
+            ("net.minecraftforge:forge:1.20.1-47.4.10:client", "net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-client.jar", "без @ — jar"),
+            ("net.minecraft:client:1.20.1-20230612.114412:mappings@txt", "net/minecraft/client/1.20.1-20230612.114412/client-1.20.1-20230612.114412-mappings.txt", "классификатор и @txt"),
+            ("de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412@zip", "de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412/mcp_config-1.20.1-20230612.114412.zip", "@ после версии без классификатора"),
+            ("org.ow2.asm:asm:9.5", "org/ow2/asm/asm/9.5/asm-9.5.jar", "обычная библиотека не меняется"),
+        ];
+        for (coord, rel, why) in cases {
+            assert_eq!(maven_path(coord), rel, "{}", why);
+        }
+    }
+
+    #[test]
+    fn installers_for_dir_recovers_the_build_that_made_the_dir() {
+        let cases: [(&str, &str, &str, Option<&str>, &str); 7] = [
+            ("forge", "1.20.1", "1.20.1-forge-47.4.10", Some("https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar"), "папка Forge называет свою сборку"),
+            ("neoforge", "1.21.1", "neoforge-21.1.209", Some("https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.209/neoforge-21.1.209-installer.jar"), "папка NeoForge называет свою сборку"),
+            ("neoforge", "1.20.1", "1.20.1-forge-47.1.106", Some("https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar"), "NeoForge 1.20.1 живёт на координатах Forge"),
+            ("forge", "1.7.10", "1.7.10-Forge10.13.4.1614-1.7.10", None, "легаси-папка без процессоров — проверять нечего"),
+            ("forge", "1.20.1", "1.19.2-forge-43.3.0", None, "чужая версия MC — не наша папка"),
+            ("forge", "1.20.1", "1.20.1-forge-../../evil", None, "сборка из имени папки уходит в URL и проходит проверку"),
+            ("neoforge", "1.21.1", "1.21.1-forge-47.1.0", None, "Forge-папка не выдаётся за NeoForge"),
+        ];
+        for (loader, vid, dir, url, why) in cases {
+            let got = installers_for_dir(loader, vid, dir);
+            assert_eq!(got.as_ref().and_then(|v| v.first()).map(|(u, _)| u.as_str()), url, "{} {}: {}", loader, dir, why);
+        }
+    }
+
+    #[test]
+    fn loader_dir_counts_as_installed_only_with_every_output_on_disk() {
+        let base = std::env::temp_dir().join(format!("copper-loader-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (vdir, libs) = (base.join("versions"), base.join("libraries"));
+        let outputs: Vec<String> = IMMORTAL_CRASH_JARS.iter().map(|s| s.to_string()).collect();
+        let lay = |name: &str, record: bool, present: bool| -> PathBuf {
+            let dir = vdir.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(format!("{}.json", name)), b"{}").unwrap();
+            if record {
+                record_outputs(&dir, &outputs).unwrap();
+            }
+            for rel in &outputs {
+                let p = libs.join(rel);
+                if present {
+                    // A real archive: another test may switch on deep verification, which opens every jar.
+                    use std::io::Write;
+                    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                    let mut z = zip::ZipWriter::new(std::fs::File::create(&p).unwrap());
+                    z.start_file("a.class", zip::write::SimpleFileOptions::default()).unwrap();
+                    z.write_all(b"x").unwrap();
+                    z.finish().unwrap();
+                } else {
+                    let _ = std::fs::remove_file(&p);
+                }
+            }
+            dir
+        };
+        let state = |dir: &Path| -> &'static str {
+            match loader_dir_state(dir, &libs, "forge", "1.20.1").unwrap() {
+                LoaderDir::Ready => "ready",
+                LoaderDir::Broken(_) => "broken",
+                LoaderDir::Unverified => "unverified",
+            }
+        };
+        let cases: [(&str, bool, bool, &str, &str); 4] = [
+            ("1.20.1-forge-47.4.10", true, true, "ready", "всё на месте — запуск без сети и без инсталлера"),
+            ("1.20.1-forge-47.4.10", true, false, "broken", "json есть, а процессоры не дошли — это случай Immortal, нужна переустановка"),
+            ("1.20.1-forge-47.4.10", false, true, "unverified", "папка от старой версии лаунчера сверяется со своим инсталлером"),
+            ("1.7.10-Forge10.13.4.1614-1.7.10", false, false, "ready", "легаси-Forge без процессоров не гоняется на переустановку"),
+        ];
+        for (name, record, present, expected, why) in cases {
+            let _ = std::fs::remove_dir_all(&vdir);
+            let dir = lay(name, record, present);
+            assert_eq!(state(&dir), expected, "{}: {}", name, why);
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn recorded_outputs_may_not_walk_out_of_libraries() {
+        let base = std::env::temp_dir().join(format!("copper-loader-escape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        assert!(
+            missing_outputs(&base.join("libraries"), &["../../evil.jar".to_string()]).is_err(),
+            "список выходов лежит на диске и мог быть подменён — путь за пределы libraries/ отклоняется"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Old profiles point at the file host, which no longer serves artifacts.
+    #[test]
+    fn dead_forge_maven_is_rewritten() {
+        assert_eq!(
+            maven_base("http://files.minecraftforge.net/maven/"),
+            "https://maven.minecraftforge.net/",
+            "иначе все библиотеки Forge старых сборок идут в никуда"
+        );
+        assert_eq!(maven_base("https://libraries.minecraft.net/"), "https://libraries.minecraft.net/", "чужие хосты не трогаем");
+    }
+
+    /// Forge for 1.12.2 and older carries `--tweakClass` only in the legacy
+    /// string; losing it left LaunchWrapper on VanillaTweaker, which dies with
+    /// ClassNotFoundException: net.minecraft.client.Minecraft.
+    #[test]
+    fn legacy_loader_arguments_replace_the_vanilla_string() {
+        let mut merged = serde_json::json!({
+            "id": "1.12.2",
+            "minecraftArguments": "--username ${auth_player_name} --version ${version_name}"
+        });
+        let forge = serde_json::json!({
+            "mainClass": "net.minecraft.launchwrapper.Launch",
+            "minecraftArguments": "--username ${auth_player_name} --version ${version_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker --versionType Forge"
+        });
+
+        apply_loader_args(&mut merged, &forge);
+
+        assert!(
+            merged["minecraftArguments"].as_str().unwrap_or_default().contains("FMLTweaker"),
+            "аргументы Forge для 1.12.2 обязаны заменить ванильные, иначе сборка стартует без модов и падает"
+        );
+    }
+
+    /// A 1.13+ loader has no legacy string, and inventing one would feed the
+    /// game arguments twice.
+    #[test]
+    fn modern_loader_arguments_leave_the_legacy_string_alone() {
+        let mut merged = serde_json::json!({ "id": "1.20.1", "arguments": { "game": [] } });
+        let fabric = serde_json::json!({ "arguments": { "game": ["--fabric"], "jvm": [] } });
+
+        apply_loader_args(&mut merged, &fabric);
+
+        assert!(merged["minecraftArguments"].is_null(), "у современных версий легаси-строки нет");
+        assert_eq!(merged["fabricArguments"]["game"][0], "--fabric", "аргументы лоадера обязаны доехать");
+    }
+
+    #[test]
+    fn natives_stamp_survives_same_set_and_resets_on_change() {
+        let dir = std::env::temp_dir().join("copper-natives-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let stamp = "lwjgl.jar:aaa\nglfw.jar:bbb";
+
+        assert!(!natives_up_to_date(&dir, stamp, false), "без метки распаковка обязана пройти");
+        std::fs::write(natives_stamp_path(&dir), stamp.as_bytes()).unwrap();
+        assert!(natives_up_to_date(&dir, stamp, false), "тот же набор — распаковывать нечего");
+        assert!(
+            !natives_up_to_date(&dir, "lwjgl.jar:ccc\nglfw.jar:bbb", false),
+            "версия натива сменилась — набор надо разложить заново"
+        );
+        assert!(
+            !natives_up_to_date(&dir, stamp, true),
+            "«Проверить файлы» обязана разложить нативы заново даже при целой метке"
+        );
+    }
+
+    /// Отдаёт один HTTP-ответ с заданным статусом и телом.
+    async fn serve_status(status: &'static str, body: &'static str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/forge-installer.jar.sha1", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let head = format!(
+                "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
+                body.len(),
+                body
+            );
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        url
+    }
+
+    /// Адрес, по которому никто не слушает: так выглядит заблокированный maven.
+    async fn dead_url() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/x.jar.sha1", listener.local_addr().unwrap());
+        drop(listener);
+        url
+    }
+
+    /// Первый путь мёртв, второй отвечает пятисоткой, третий — суммой: сумма
+    /// должна дойти. Раньше хватало одного обрыва на прямом пути, чтобы игрок
+    /// читал «не дошли до maven за контрольной суммой инсталлера».
+    #[tokio::test]
+    async fn installer_sum_survives_a_dead_route() {
+        const SUM: &str = "66bfea9963bfa60d88bab6b2750e74a958392715";
+        let targets = vec![
+            dead_url().await,
+            serve_status("502 Bad Gateway", "").await,
+            serve_status("200 OK", "66BFEA9963BFA60D88BAB6B2750E74A958392715  forge-installer.jar").await,
+        ];
+        match maven_sha1_via(&targets).await {
+            Ok(sum) => assert_eq!(sum, SUM, "сумма читается первым словом и в нижнем регистре"),
+            Err(_) => panic!("живой третий путь обязан дать сумму"),
+        }
+    }
+
+    /// 404 — ответ самого репозитория «такого файла нет»: второе имя сборки
+    /// отсеивается сразу, без круга по зеркалам.
+    #[tokio::test]
+    async fn installer_sum_404_is_absent_at_once() {
+        let targets = vec![serve_status("404 Not Found", "").await, dead_url().await];
+        assert!(matches!(maven_sha1_via(&targets).await, Err(MavenMiss::Absent)));
+    }
+
+    /// Все пути мертвы — причина сети доходит до игрока, а не «нет билда».
+    #[tokio::test]
+    async fn installer_sum_all_routes_dead_is_unreachable() {
+        let targets = vec![dead_url().await];
+        assert!(matches!(maven_sha1_via(&targets).await, Err(MavenMiss::Unreachable(_))));
+    }
+
+    /// Встроенная таблица срабатывает ровно на тех адресах, которые строит
+    /// установка: строка, до которой установка никогда не доходит, бесполезна.
+    #[test]
+    fn every_known_sum_matches_an_installer_url_the_launcher_builds() {
+        for (loader, mc, build, file, sum) in super::super::loader_sums::rows() {
+            let urls: Vec<String> = if *loader == "neoforge" {
+                vec![neoforge_installer(mc, build).0]
+            } else {
+                forge_installers(mc, build).into_iter().map(|(u, _)| u).collect()
+            };
+            let hit = urls.iter().find(|u| u.ends_with(&format!("/{}", file)));
+            let Some(url) = hit else { panic!("{} {} {}: установка не строит адрес {}", loader, mc, build, file) };
+            assert_eq!(known_installer_sha1(url), Some(*sum), "{}", url);
+        }
+    }
+
+    /// вход -> адрес и папка: NeoForge 1.20.1 живёт под координатами forge и
+    /// создаёт профиль с именем как у Forge; остальные ветки — как раньше.
+    #[test]
+    fn neoforge_1_20_1_uses_forge_coordinates() {
+        let cases: [(&str, &str, &str, &str); 3] = [
+            (
+                "1.20.1",
+                "47.1.106",
+                "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar",
+                "1.20.1-forge-47.1.106",
+            ),
+            (
+                "1.20.1",
+                "1.20.1-47.1.101",
+                "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.101/forge-1.20.1-47.1.101-installer.jar",
+                "1.20.1-forge-47.1.101",
+            ),
+            (
+                "1.21.1",
+                "21.1.233",
+                "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.233/neoforge-21.1.233-installer.jar",
+                "neoforge-21.1.233",
+            ),
+        ];
+        for (vid, build, url, dir) in cases {
+            assert_eq!(neoforge_installer(vid, build), (url.to_string(), dir.to_string()), "{} {}", vid, build);
+        }
+        assert!(neoforge_versions_url("1.20.1").ends_with("/net/neoforged/forge"));
+        assert!(neoforge_versions_url("1.21.1").ends_with("/net/neoforged/neoforge"));
+        let list = serde_json::json!({ "versions": ["47.1.82", "1.20.1-47.1.9", "1.20.1-47.1.106", "1.20.1-47.1.100"] });
+        assert_eq!(
+            neoforge_candidates(&list, "1.20.1"),
+            vec!["47.1.106", "47.1.100", "47.1.82", "47.1.9"],
+            "номера без префикса MC, числовой порядок"
+        );
+    }
+}

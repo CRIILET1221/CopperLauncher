@@ -1,0 +1,148 @@
+use crate::engine::*;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+/// Symlinks are skipped: an export follows every file it lists, and a link in
+/// a build or a world (config -> ~/.ssh) would pack the target into an archive
+/// the player then hands to others.
+pub(crate) fn walk(dir: &Path) -> Vec<PathBuf> {
+    let mut out = vec![];
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() { continue; }
+            let p = e.path();
+            if ft.is_dir() { out.extend(walk(&p)); } else if ft.is_file() { out.push(p); }
+        }
+    }
+    out
+}
+
+pub(crate) fn zip_add_overrides(
+    zip: &mut zip::ZipWriter<std::fs::File>,
+    pdir: &Path, subs: &[&str],
+    known: &std::collections::HashSet<String>,
+    opts: zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    use std::io::Write;
+    for sub in subs {
+        for entry in walk(&pdir.join(sub)) {
+            let name = entry.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            if name.ends_with(".disabled") || name.starts_with("copper-") { continue }
+            let rel = match entry.strip_prefix(pdir) {
+                Ok(r) => r.to_string_lossy().replace('\\', "/"),
+                Err(_) => continue,
+            };
+            if known.contains(&rel) { continue }
+            zip.start_file(format!("overrides/{}", rel), opts).map_err(|e| e.to_string())?;
+            let data = std::fs::read(&entry).map_err(|e| e.to_string())?;
+            zip.write_all(&data).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// .mrpack layout: files known to Modrinth go into modrinth.index.json, the
+/// rest (configs, local files) into overrides/.
+/// Имя файла выгрузки: название, которое ввёл игрок, а если в нём не осталось
+/// допустимых символов — имя сборки, очищенное тем же фильтром. Ни разделителей
+/// пути, ни точек в результате не бывает, поэтому файл всегда ложится прямо в
+/// папку `exports`.
+pub fn export_file_stem(name: &str, profile: &str) -> String {
+    fn clean(s: &str) -> String {
+        let kept: String =
+            s.chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_').take(80).collect();
+        kept.trim().to_string()
+    }
+    [clean(name), clean(profile)].into_iter().find(|s| !s.is_empty()).unwrap_or_else(|| "modpack".into())
+}
+
+/// The exact loader build the pack runs on. Modrinth App and Prism refuse an
+/// index whose loader is "*", so an unpinned build exports the recommended
+/// build it is launched with.
+pub async fn export_loader_build(profile: &str) -> Option<String> {
+    let prof = load_profiles().into_iter().find(|p| p.name == profile)?;
+    if let Some(v) = prof.loader_version.clone().filter(|v| !v.trim().is_empty()) {
+        return Some(v);
+    }
+    let builds = list_loader_versions(&prof.loader_id(), &prof.version).await.ok()?;
+    builds.iter().find(|b| b.recommended).or(builds.first()).map(|b| b.version.clone())
+}
+
+pub fn export_mrpack(
+    profile: String, out_path: String, name: String, version: String, description: String,
+    loader_build: Option<String>,
+) -> Result<String, String> {
+    use std::io::Write;
+    refuse_protected(&profile)?;
+    let pdir = profile_dir(&profile);
+    let prof = load_profiles().into_iter().find(|p| p.name == profile);
+    let gv = prof.as_ref().map(|p| p.version.clone()).unwrap_or_default();
+    let loader_id = prof.map(|p| p.loader_id()).unwrap_or_else(|| "vanilla".into());
+
+    let mut files_json = vec![];
+    let mut known: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for e in load_content_manifest(&profile) {
+        if e.download_url.is_empty() || e.sha1.is_empty() || e.sha512.is_empty() { continue }
+        if !pdir.join(content_dir(&e.kind)).join(&e.file_name).exists() { continue }
+        let rel = format!("{}/{}", content_dir(&e.kind), e.file_name);
+        known.insert(rel.clone());
+        files_json.push(serde_json::json!({
+            "path": rel,
+            "hashes": {"sha1": e.sha1, "sha512": e.sha512},
+            "downloads": [e.download_url],
+            "fileSize": e.file_size,
+            "env": {"client": "required", "server": "required"}
+        }));
+    }
+    let mut deps = serde_json::Map::new();
+    deps.insert("minecraft".into(), Value::String(gv));
+    if let Some(key) = mrpack_loader_key(&loader_id) {
+        let build = loader_build.filter(|v| !v.trim().is_empty()).ok_or_else(|| {
+            "Не удалось узнать версию загрузчика сборки — запусти её один раз и повтори выгрузку".to_string()
+        })?;
+        deps.insert(key.into(), Value::String(build));
+    }
+    let index = serde_json::json!({
+        "formatVersion": 1, "game": "minecraft",
+        "versionId": if version.is_empty() { "1.0.0".to_string() } else { version },
+        "name": if name.is_empty() { profile.clone() } else { name },
+        "summary": description,
+        "files": files_json,
+        "dependencies": Value::Object(deps)
+    });
+
+    if let Some(p) = Path::new(&out_path).parent() { std::fs::create_dir_all(p).ok(); }
+    let f = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(f);
+    let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("modrinth.index.json", opts).map_err(|e| e.to_string())?;
+    zip.write_all(serde_json::to_string_pretty(&index).unwrap().as_bytes()).map_err(|e| e.to_string())?;
+    zip_add_overrides(&mut zip, &pdir, &["config", "mods", "resourcepacks", "shaderpacks", "datapacks"], &known, opts)?;
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(out_path)
+}
+
+fn mrpack_loader_key(loader_id: &str) -> Option<&'static str> {
+    match loader_id {
+        "fabric" => Some("fabric-loader"),
+        "quilt" => Some("quilt-loader"),
+        "forge" => Some("forge"),
+        "neoforge" => Some("neoforge"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod export_name_tests {
+    use super::export_file_stem;
+
+    #[test]
+    fn empty_title_never_lets_the_build_name_escape_exports() {
+        assert_eq!(export_file_stem("", "../../../Library/LaunchAgents/x"), "LibraryLaunchAgentsx");
+        assert_eq!(export_file_stem("!!!", "..\\..\\evil"), "evil");
+        assert_eq!(export_file_stem("", "../.."), "modpack");
+        assert_eq!(export_file_stem("  Моя сборка ", "p"), "Моя сборка");
+        assert_eq!(export_file_stem("", "Survival_1"), "Survival_1");
+    }
+}

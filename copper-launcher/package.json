@@ -1,0 +1,54 @@
+{
+  "name": "copper-launcher",
+  "private": true,
+  "version": "2.0.0",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:web": "tsc -b && vite build && bun scripts/check-frontend-gate.mjs",
+    "build:web:release": "vite build && bun scripts/check-frontend-gate.mjs",
+    "typecheck": "tsc -b",
+    "test": "bun scripts/test.mjs",
+    "lint": "tsc -b",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "build:release": "tauri build --config src-tauri/tauri.release.conf.json",
+    "build:fast": "bun scripts/build.mjs fast",
+    "build:fast:bundle": "bun scripts/build.mjs fast-bundle",
+    "build:timings": "bun scripts/build.mjs fast --timings",
+    "build:why": "bun scripts/build.mjs fast --why"
+  },
+  "overrides": {
+    "postcss": "^8.5.25",
+    "nanoid": "^3.3.18",
+    "three": "0.182.0"
+  },
+  "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-deep-link": "^2.4.9",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "2.11.0",
+    "centrifuge": "^5.7.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "skin3d": "0.1.3",
+    "skinview-utils": "0.7.1",
+    "three": "0.182.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1111.0",
+    "@tauri-apps/cli": "^2",
+    "@types/bun": "^1.3.14",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/three": "0.182.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "postcss": "^8.5.25",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.12"
+  }
+}
