@@ -1,6 +1,6 @@
 # Authentication setup for Copper
 
-Copper no longer ships another launcher's OAuth application IDs. Without your own registrations, Microsoft/Ely.by sign-in and refresh return a clear configuration error before contacting the OAuth service. Local instance management and the local skin library still work.
+Copper no longer ships another launcher's OAuth application IDs. Copper's own public Microsoft client ID is configured in `copper-launcher/.cargo/config.toml`; Minecraft API approval has been requested and is still pending. This is a public identifier, not a password or client secret. Ely.by remains unconfigured. Without a configured registration, sign-in and refresh return a clear configuration error before contacting the OAuth service. Local instance management and the local skin library still work.
 
 ## Microsoft
 
@@ -21,6 +21,16 @@ The [published general OAuth guide](https://docs.ely.by/en/oauth.html) describes
 
 ## Build with your public IDs
 
+For the official Copper project, ordinary `bun run tauri build` and `copper-installer/build.ps1` builds automatically use the maintainer's Microsoft registration. No secret, redirect URI or Microsoft tenant ID is embedded. Approval must still be confirmed and a real sign-in tested before publishing a working Microsoft login claim. Rebuild the launcher before packaging it; an old executable does not gain this configuration automatically.
+
+From the `copper-launcher` folder, build the custom installer (the result is `Copper-Setup.exe` in the repository root):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\copper-installer\build.ps1
+```
+
+For another fork, replace the tracked client ID with your own registration, or override it through the build environment. To explicitly disable Microsoft's configured default, set `$env:COPPER_MS_CLIENT_ID = ''` in PowerShell 7.5+, or remove the entry from `.cargo/config.toml` in older PowerShell versions.
+
 From the `copper-launcher` folder, in PowerShell:
 
 ```powershell
@@ -29,12 +39,12 @@ $env:COPPER_ELY_CLIENT_ID = 'YOUR_OWN_ELY_APPLICATION_ID'
 powershell -NoProfile -ExecutionPolicy Bypass -File ..\copper-installer\build.ps1
 ```
 
-Replace the placeholders only with registrations you own or are explicitly authorized to use. Omit either variable to leave that provider unconfigured. These IDs are compiled into the launcher. Existing sessions created with an old application may need a fresh sign-in after migration.
+Replace the placeholders only with registrations you own or are explicitly authorized to use. Omitting the Microsoft variable uses Copper's tracked default; omitting the Ely.by variable leaves Ely.by unconfigured. These IDs are compiled into the launcher. Existing sessions created with an old application may need a fresh sign-in after migration.
 
 Discord Rich Presence is optional. It has no default application registration; supply your own `COPPER_DISCORD_APP_ID` in the runtime environment if you enable it.
 
 ## Пока регистраций нет
 
-Можно собрать Copper без этих переменных. Локальные инстансы и предпросмотр скинов доступны, но новый вход Microsoft/Ely.by не настроен. Это не разрешает играть без приобретённой лицензии Minecraft.
+Для Copper собственная регистрация Microsoft уже добавлена в настройки сборки; заявка на доступ к Minecraft API ожидает рассмотрения. Ely.by пока не настроен. Локальные инстансы и предпросмотр скинов доступны. Это не разрешает играть без приобретённой лицензии Minecraft.
 
 Начни с Microsoft Entra: открой портал своим аккаунтом и проверь, есть ли раздел App registrations. Если портал требует создать каталог/подписку или не даёт доступ, сначала нужно решить этот вопрос; подставлять чужой ID вместо регистрации не нужно.

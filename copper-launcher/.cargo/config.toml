@@ -1,0 +1,6 @@
+# Public application ID owned by the Copper maintainer. This is not a secret.
+# Minecraft API approval is pending; registration alone does not grant access.
+# Forks must replace this with their own registration, or override it in the
+# build environment. An explicitly empty override disables Microsoft sign-in.
+[env]
+COPPER_MS_CLIENT_ID = { value = "dac661af-cf5b-483b-b6b3-7857e43a4598", force = false }
