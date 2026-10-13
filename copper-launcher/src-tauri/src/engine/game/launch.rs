@@ -1284,6 +1284,9 @@ pub async fn install_and_launch_in(
     profile: String,
     auth: Auth,
 ) -> Result<String, String> {
+    if auth.token.is_empty() || auth.uuid.is_empty() || !auth.yggdrasil.is_empty() {
+        return Err("Для запуска требуется подтверждённая сессия Microsoft Minecraft".into());
+    }
     check_cancel()?;
     let _slot = claim_profile_start(&profile, || emit(&app, "files", 2.0, "Останавливаем прошлый запуск этой сборки…")).await?;
     refuse_second_instance(&running_games(), &profile)?;
@@ -1419,38 +1422,10 @@ pub async fn install_and_launch_in(
 
     check_cancel()?;
     emit(&app, "launch", 92.0, "Запускаем игру…");
-    // authlib-injector redirects Yggdrasil to a custom auth server. Without the
-    // agent the game would authenticate against Mojang with a non-Mojang token
-    // and fail session checks, so a failure here falls back to offline mode.
-    let mut auth = auth;
-    let mut agent: Option<String> = None;
-    // Метаданные сервера входа лаунчер берёт сам и отдаёт агенту готовыми:
-    // иначе authlib-injector качает их из игры при старте, и сбой DNS у игрока
-    // или 502 на выкатке роняет игру до окна (2.0.122, 25.09.2026: 13 игроков
-    // за 6 часов). Сети нет даже у лаунчера — игра идёт офлайн, а не падает.
-    let mut prefetched: Option<String> = None;
-    if !auth.yggdrasil.is_empty() {
-        match ensure_authlib_injector().await {
-            Ok(jar) => match get_json(&auth.yggdrasil).await {
-                Ok(meta) => {
-                    use base64::Engine as _;
-                    prefetched = Some(format!(
-                        "-Dauthlibinjector.yggdrasil.prefetched={}",
-                        base64::engine::general_purpose::STANDARD.encode(meta.to_string())
-                    ));
-                    agent = Some(format!("-javaagent:{}={}", jar.to_string_lossy(), auth.yggdrasil));
-                }
-                Err(e) => {
-                    warn(&app, &format!("Сервер скинов Copper не ответил ({}) — запускаем в офлайн-режиме", e));
-                    auth = Auth::default();
-                }
-            },
-            Err(e) => {
-                warn(&app, &format!("Скины Copper недоступны ({}) — запускаем в офлайн-режиме", e));
-                auth = Auth::default();
-            }
-        }
-    }
+    // This distribution accepts Microsoft sessions only; no alternate auth
+    // agent or silent unauthenticated fallback is installed.
+    let agent: Option<String> = None;
+    let prefetched: Option<String> = None;
     // Copper never installs cosmetics or skin mods into a user instance.
     remove_copper_mod(&profile)?;
     retire_launcher_skin_mod(&profile)?;

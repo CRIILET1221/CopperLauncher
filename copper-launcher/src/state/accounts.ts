@@ -63,9 +63,11 @@ function collapseCopper(list: Account[], active: string): { list: Account[]; act
 }
 
 export function loadState(): { list: Account[]; active: string } {
-  const stored = readAccounts()
-  const state = collapseCopper(stored, readActive())
-  if (state.list.length !== stored.length) {
+  const stored = readAccounts().filter((a) => a.kind !== 'offline')
+  const selected = readActive()
+  const active = stored.some((a) => a.id === selected) ? selected : stored[0]?.id || ''
+  const state = collapseCopper(stored, active)
+  if (state.list.length !== readAccounts().length || state.active !== readActive()) {
     persist(state.list)
     localStorage.setItem('m-active', state.active)
   }
@@ -91,6 +93,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     set({ active: id })
   },
   add: (input) => {
+    if (input.kind === 'offline') throw new Error('Офлайн-аккаунты больше не поддерживаются')
     const l = get().list.slice()
     const acc: Account = { ...(input as Account) }
     acc.id = acc.id || 'acc' + Date.now() + Math.floor(Math.random() * 1000)
@@ -125,6 +128,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     set({ list: l, active })
   },
   save: (list) => {
+    list = list.filter((a) => a.kind !== 'offline')
     persist(list)
     set({ list: list.slice() })
   },
@@ -166,20 +170,6 @@ export function effectiveNick(): string {
     if (game) return game
   }
   return (a && a.nick) || 'Player' + Math.floor(Math.random() * 9999)
-}
-
-export type LaunchAuthKind = 'offline' | 'microsoft' | 'copper' | 'elyby'
-
-/// An offline account is an explicit choice of nick: issuing a Copper session for it would
-/// replace that nick with the one bound to the site login, so only a Copper account gets one.
-/// A server that checks sessions only against our Yggdrasil turns away a licence
-/// and an offline nick alike, so its build always starts on the Copper session.
-export function launchAuthKind(acc: Account | null, copperSession: boolean, copperOnly = false): LaunchAuthKind {
-  if (copperOnly) return copperSession ? 'copper' : 'offline'
-  if (acc && acc.kind === 'microsoft') return 'microsoft'
-  if (acc && acc.kind === 'elyby') return 'elyby'
-  if (acc && !isCopperKind(acc.kind)) return 'offline'
-  return copperSession ? 'copper' : 'offline'
 }
 
 export function hasLicenseSession(a: Account): boolean {

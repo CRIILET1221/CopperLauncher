@@ -13,7 +13,11 @@ Copper no longer ships another launcher's OAuth application IDs. Copper's own pu
 
 Official references: [app registration](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app), [device authorization protocol](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code).
 
-## Ely.by
+## Current launch policy
+
+Offline account creation and unauthenticated launch are removed. Previously saved offline account rows are retired without deleting instances, worlds or skins. Missing or expired Microsoft sessions stop launch; there is no offline fallback. Ely.by and legacy Copper sessions cannot launch Minecraft in this distribution. Local instance management and skin previews remain available without sign-in.
+
+## Ely.by (not offered in this distribution)
 
 Use the [Ely.by developer portal](https://account.ely.by/dev) to register Copper as a launcher/public desktop application supported by the device-code flow. The current implementation uses `account_info minecraft_server_session` and does not distribute a client secret.
 

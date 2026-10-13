@@ -5,10 +5,10 @@ import { useAccounts } from '../state/accounts'
 import { cancelElyLogin,copyElyCode,copyElyVerifyLink,openElyVerifyPage,startElyLogin,useElyLogin } from '../state/elyLogin'
 import { cancelWebLogin,copyUserCode,copyVerifyLink,startWebLogin,useLogin } from '../state/login'
 import { cancelMsLogin,copyMsCode,copyMsVerifyLink,openMsVerifyPage,startMsLogin,useMsLogin } from '../state/msLogin'
-import { closeModal,openModal,showToast,useUi } from '../state/ui'
+import { closeModal,openModal,useUi } from '../state/ui'
 import { SecurityInfo } from './SecurityInfo'
 
-type Kind = 'copper' | 'microsoft' | 'elyby' | 'offline'
+type Kind = 'copper' | 'microsoft' | 'elyby'
 
 const KINDS: { id: Kind; ic: string; title: string; sub: string }[] = [
   {
@@ -17,25 +17,12 @@ const KINDS: { id: Kind; ic: string; title: string; sub: string }[] = [
     title: 'Лицензия Microsoft',
     sub: 'Лицензионные серверы, свой скин',
   },
-  {
-    id: 'elyby',
-    ic: 'i-mo-key',
-    title: 'Аккаунт Ely.by',
-    sub: 'Серверы Ely.by, скин из Ely.by',
-  },
-  {
-    id: 'offline',
-    ic: 'i-mo-user',
-    title: 'Офлайн-аккаунт',
-    sub: 'Локальный профиль для приобретённой игры',
-  },
 ]
 
 function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () => void; onDone: () => void; onSafety: () => void }) {
   const login = useLogin()
   const ms = useMsLogin()
   const ely = useElyLogin()
-  const [nick, setNick] = useState('')
   const count = useAccounts((s) => s.list.length)
   const startCount = useRef(count)
   const doneRef = useRef(false)
@@ -48,16 +35,6 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
     doneCb.current()
   }, [count])
 
-  const createOffline = () => {
-    const v = nick.trim()
-    if (!/^[A-Za-z0-9_]{3,16}$/.test(v)) {
-      showToast('Ник: латиница, цифры и _, от 3 до 16 символов', 'error')
-      return
-    }
-    useAccounts.getState().add({ nick: v, kind: 'offline' })
-    onDone()
-    showToast('Аккаунт создан: ' + v)
-  }
 
   const meta = KINDS.find((k) => k.id === kind)!
   const busy = kind === 'copper' ? login.webBusy : kind === 'microsoft' ? ms.busy : kind === 'elyby' ? ely.busy : false
@@ -89,28 +66,6 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
         </span>
       </div>
 
-      {kind === 'offline' ? (
-        <div style={{ marginTop: '16px' }}>
-          <div className="input" style={{ width: '100%' }}>
-            <input
-              placeholder="Ник в игре (латиница, 3–16)"
-              maxLength={16}
-              autoFocus
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              value={nick}
-              onChange={(e) => setNick(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') createOffline()
-              }}
-            />
-          </div>
-          <button className="btn md primary" style={{ width: '100%', marginTop: '12px' }} onClick={createOffline}>
-            Создать
-          </button>
-        </div>
-      ) : (
         <div style={{ marginTop: '16px' }}>
           {busy && code ? (
             <>
@@ -186,7 +141,6 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
             </p>
           ) : null}
         </div>
-      )}
     </>
   )
 }

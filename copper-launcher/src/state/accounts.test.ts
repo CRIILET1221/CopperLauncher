@@ -11,83 +11,32 @@ Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
 })
 
-const { launchAuthKind, useAccounts } = await import('./accounts')
+const { useAccounts, loadState } = await import('./accounts')
 
-const acc = (kind: string) => ({ id: 'a1', nick: 'Steve', kind })
+describe('retired offline accounts', () => {
+  test('migration removes old offline rows and selects a remaining account', () => {
+    store.set('m-accounts', JSON.stringify([
+      { id: 'old', nick: 'Steve', kind: 'offline' },
+      { id: 'licensed', nick: 'Alex', kind: 'microsoft' },
+    ]))
+    store.set('m-active', 'old')
+    store.set('copper-local-skins-v1', 'saved skins')
+    const state = loadState()
+    expect(state.list.map((a) => a.id)).toEqual(['licensed'])
+    expect(state.active).toBe('licensed')
+    expect(JSON.parse(store.get('m-accounts')!)).toHaveLength(1)
+    expect(store.get('copper-local-skins-v1')).toBe('saved skins')
+  })
 
-describe('launchAuthKind', () => {
-  const cases: Array<{ name: string; account: ReturnType<typeof acc> | null; copper: boolean; expect: string; why: string }> = [
-    {
-      name: 'offline account while signed into Copper',
-      account: acc('offline'),
-      copper: true,
-      expect: 'offline',
-      why: 'a Copper session overrides the launch nick with the site profile name, so the chosen offline nick never reaches the game',
-    },
-    { name: 'offline account without Copper', account: acc('offline'), copper: false, expect: 'offline', why: 'nothing else to use' },
-    { name: 'copper account', account: acc('copper'), copper: true, expect: 'copper', why: 'our Yggdrasil session is what the account is for' },
-    { name: 'telegram account', account: acc('tg'), copper: true, expect: 'copper', why: 'tg is a Copper login, not a separate nick' },
-    {
-      name: 'copper account without a session',
-      account: acc('copper'),
-      copper: false,
-      expect: 'offline',
-      why: 'no token to issue a session with',
-    },
-    { name: 'microsoft account', account: acc('microsoft'), copper: true, expect: 'microsoft', why: 'the licence wins over our session' },
-    {
-      name: 'ely.by account while signed into Copper',
-      account: acc('elyby'),
-      copper: true,
-      expect: 'elyby',
-      why: 'the chosen Ely.by account must reach the game; falling to offline drops its session and its skin',
-    },
-    { name: 'no account at all', account: null, copper: true, expect: 'copper', why: 'nothing chose a nick, so the session may name one' },
-  ]
+  test('migration of an offline-only list leaves no active account', () => {
+    store.set('m-accounts', JSON.stringify([{ id: 'old', nick: 'Steve', kind: 'offline' }]))
+    store.set('m-active', 'old')
+    expect(loadState()).toEqual({ list: [], active: '' })
+  })
 
-  for (const c of cases)
-    test(c.name, () => {
-      expect(launchAuthKind(c.account, c.copper), c.why).toBe(c.expect as never)
-    })
-})
-
-describe('launchAuthKind on a Copper-only server', () => {
-  const cases: Array<{ name: string; account: ReturnType<typeof acc> | null; copper: boolean; expect: string; why: string }> = [
-    {
-      name: 'microsoft account',
-      account: acc('microsoft'),
-      copper: true,
-      expect: 'copper',
-      why: 'OneBlock checks hasJoined on our Yggdrasil: a licence session is never found there and the player is kicked',
-    },
-    {
-      name: 'offline account',
-      account: acc('offline'),
-      copper: true,
-      expect: 'copper',
-      why: 'an offline nick has no session at all, the gate turns it away too',
-    },
-    { name: 'copper account', account: acc('copper'), copper: true, expect: 'copper', why: 'already the right session' },
-    {
-      name: 'ely.by account',
-      account: acc('elyby'),
-      copper: true,
-      expect: 'copper',
-      why: 'OneBlock checks hasJoined on our Yggdrasil only, an Ely.by session is never found there',
-    },
-    {
-      name: 'microsoft account without a Copper session',
-      account: acc('microsoft'),
-      copper: false,
-      expect: 'offline',
-      why: 'not copper, so the launch stops and asks to sign in instead of starting a game that cannot join',
-    },
-  ]
-
-  for (const c of cases)
-    test(c.name, () => {
-      expect(launchAuthKind(c.account, c.copper, true), c.why).toBe(c.expect as never)
-    })
+  test('an offline account cannot be added programmatically', () => {
+    expect(() => useAccounts.getState().add({ nick: 'Steve', kind: 'offline' })).toThrow()
+  })
 })
 
 describe('single Copper row', () => {

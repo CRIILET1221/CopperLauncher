@@ -12,7 +12,7 @@ Copper is an independent fork of [Millida Launcher](https://github.com/millida/l
 
 - **Local instances** — create separate Minecraft setups, import modpacks and browse Modrinth.
 - **Quick Start** — choose an instance and launch it from the main screen.
-- **Accounts** — local profiles; Microsoft and Ely.by sign-in when the maintainer has configured their own registrations.
+- **Accounts** — Microsoft sign-in with Copper’s own application registration. Minecraft launch requires a verified Microsoft Java Edition profile; offline account creation and alternate-provider launch are disabled. API approval is pending.
 - **Skin library** — drop a 64×64 or 64×32 PNG into the skin window, preview it in 3D and save it locally. Pick saved skins using face thumbnails.
 - **Startup screen** — a centered copper block on the dark Copper background, shared by the launcher, installer and uninstaller.
 - **Copper installer** — a Windows installer and separate uninstaller with a matching interface.

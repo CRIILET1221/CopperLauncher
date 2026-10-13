@@ -712,7 +712,7 @@ export const installVersion = (
 
 // Names the account to play as; the core resolves the credentials itself.
 export interface LaunchAuth {
-  kind: 'offline' | 'microsoft' | 'copper' | 'elyby'
+  kind: 'microsoft'
   accountId?: string
   uuid?: string
   xuid?: string

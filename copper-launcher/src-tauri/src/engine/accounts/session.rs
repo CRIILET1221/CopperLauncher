@@ -201,104 +201,47 @@ pub struct ResolvedAuth {
     pub nick: Option<String>,
 }
 
-const SESSION_ATTEMPTS: u32 = 3;
-
-pub async fn resolve_launch_auth(app: &AppHandle, args: Option<AuthArgs>) -> Result<ResolvedAuth, String> {
-    let args = args.unwrap_or_default();
-    let offline = ResolvedAuth { auth: Auth::default(), nick: None };
-    match args.kind.unwrap_or_default().as_str() {
-        "microsoft" => {
-            let token = args.account_id.as_deref().and_then(mc_token)
-                .ok_or("Сессия Microsoft не найдена. Войди заново или выбери офлайн-аккаунт.")?;
-            // Use the identity returned by Minecraft, not a potentially stale local UUID.
-            let profile = ms_profile(token.clone()).await
-                .map_err(|e| format!("Не удалось подтвердить профиль Microsoft: {e}"))?;
-            let uuid = profile["uuid"].as_str().unwrap_or_default().replace('-', "");
-            let nick = profile["nick"].as_str().unwrap_or_default().to_string();
-            if uuid.len() != 32 || !uuid.chars().all(|c| c.is_ascii_hexdigit()) || nick.is_empty() {
-                return Err("Minecraft вернул некорректный профиль. Войди в Microsoft заново.".into());
-            }
-            Ok(ResolvedAuth {
-                auth: Auth { token, uuid, xuid: args.xuid.unwrap_or_default(), yggdrasil: String::new() },
-                nick: Some(nick),
-            })
-        }
-        "elyby" => {
-            let Some(token) = args.account_id.as_deref().and_then(mc_token) else { return Ok(offline) };
-            Ok(ResolvedAuth {
-                auth: Auth { token, uuid: args.uuid.unwrap_or_default(), xuid: String::new(), yggdrasil: ELY_YGGDRASIL.into() },
-                nick: None,
-            })
-        }
-        "copper" => Ok(copper_launch_auth(app).await),
-        _ => Ok(offline),
+/// Reject missing, legacy or alternate-provider requests before contacting a service.
+fn require_microsoft_launch(kind: Option<&str>) -> Result<(), String> {
+    if kind != Some("microsoft") {
+        return Err("Для запуска требуется аккаунт Microsoft с приобретённой Java Edition".into());
     }
+    Ok(())
+}
+
+pub async fn resolve_launch_auth(_app: &AppHandle, args: Option<AuthArgs>) -> Result<ResolvedAuth, String> {
+    let args = args.unwrap_or_default();
+    require_microsoft_launch(args.kind.as_deref())?;
+    let token = args.account_id.as_deref().and_then(mc_token)
+        .ok_or("Сессия Microsoft не найдена. Войди заново и подтверди лицензию.")?;
+    let profile = ms_profile(token.clone()).await
+        .map_err(|e| format!("Не удалось подтвердить профиль Microsoft: {e}"))?;
+    let uuid = profile["uuid"].as_str().unwrap_or_default().replace('-', "");
+    let nick = profile["nick"].as_str().unwrap_or_default().to_string();
+    if uuid.len() != 32 || !uuid.chars().all(|c| c.is_ascii_hexdigit()) || nick.is_empty() {
+        return Err("Minecraft вернул некорректный профиль. Войди в Microsoft заново.".into());
+    }
+    Ok(ResolvedAuth {
+        auth: Auth { token, uuid, xuid: args.xuid.unwrap_or_default(), yggdrasil: String::new() },
+        nick: Some(nick),
+    })
 }
 
 pub fn copper_yggdrasil() -> String {
     format!("{}/yggdrasil", COPPER_API)
 }
 
-/// Longest a launch waits for the game session before starting offline, as it
-/// already does when the API refuses. A dead connection used to spend three
-/// full connect timeouts here before the window opened.
-const SESSION_BUDGET: Duration = Duration::from_secs(12);
-
-/// Our own Yggdrasil session, issued per launch and handed to authlib-injector.
-/// The request runs as its own task: dropping it on the budget could cut a token
-/// refresh after the server had already rotated the pair, and the reused
-/// refresh token then signs the player out.
-async fn copper_launch_auth(app: &AppHandle) -> ResolvedAuth {
-    let issued = tauri::async_runtime::spawn(issue_game_session());
-    let last = match tokio::time::timeout(SESSION_BUDGET, issued).await {
-        Ok(Ok(Ok(auth))) => return auth,
-        Ok(Ok(Err(e))) => e,
-        Ok(Err(e)) => e.to_string(),
-        Err(_) => format!("сервер не ответил за {} с", SESSION_BUDGET.as_secs()),
-    };
-    crate::engine::warn(
-        app,
-        &format!("Вход Copper не выдан, играем офлайн (Multiplayer и Realms будут недоступны): {}", last),
-    );
-    ResolvedAuth { auth: Auth::default(), nick: None }
-}
-
-async fn issue_game_session() -> Result<ResolvedAuth, String> {
-    let mut last = String::new();
-    for attempt in 0..SESSION_ATTEMPTS {
-        let body = Some(serde_json::json!({}));
-        match copper_api_auth("/launcher/game-session".into(), "POST".into(), body).await {
-            Ok(v) => {
-                let token = v["accessToken"].as_str().unwrap_or_default().to_string();
-                if !token.is_empty() {
-                    return Ok(ResolvedAuth {
-                        auth: Auth {
-                            token,
-                            uuid: v["uuid"].as_str().unwrap_or_default().to_string(),
-                            xuid: String::new(),
-                            yggdrasil: copper_yggdrasil(),
-                        },
-                        nick: v["name"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string()),
-                    });
-                }
-                last = "в ответе нет accessToken".into();
-            }
-            Err(e) if e == UNAUTHORIZED => {
-                last = e;
-                break;
-            }
-            Err(e) => last = e,
-        }
-        if attempt + 1 < SESSION_ATTEMPTS {
-            tokio::time::sleep(Duration::from_millis(700 * (attempt as u64 + 1))).await;
-        }
-    }
-    Err(last)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_requires_microsoft() {
+        assert!(require_microsoft_launch(Some("microsoft")).is_ok());
+        for kind in [None, Some("offline"), Some("elyby"), Some("copper"), Some("tg"), Some("")] {
+            assert!(require_microsoft_launch(kind).is_err());
+        }
+    }
 
     #[test]
     fn relogin_only_on_revoked_grant() {

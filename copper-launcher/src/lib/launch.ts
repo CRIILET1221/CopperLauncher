@@ -1,4 +1,3 @@
-import { hasCopperAccount } from './api'
 import { hasTauri } from '../ipc/tauri'
 import { PACK_ACCESS_PREFIX, cancelLaunch, launchGame, launchProfile, loadProfileSettings, quickPlay, pinServerDat, runningGames, discordPresence as ipcDiscordPresence } from '../ipc/commands'
 import { usePackKey } from '../state/packKey'
@@ -6,9 +5,9 @@ import { listenLaunchProgress } from '../ipc/events'
 import type { UnlistenFn } from '../ipc/tauri'
 import type { LaunchAuth } from '../ipc/commands'
 import { joinPageUrl } from './invite'
-import { effectiveNick, getAccount, hasLicenseSession, isCopperKind, launchAuthKind, profileSlug } from '../state/accounts'
+import { getAccount, profileSlug } from '../state/accounts'
 import { ensureMsAuth, startMsLogin } from '../state/msLogin'
-import { uiChoice, uiConfirm } from '../state/confirm'
+import { uiConfirm } from '../state/confirm'
 import { useProfiles } from '../state/profiles'
 import { showToast, useUi } from '../state/ui'
 import { useGame } from '../state/game'
@@ -16,8 +15,7 @@ import { applyLaunchWindowMode } from './window'
 import { buildTag } from './diagnosticPrivacy'
 import { packStepForLaunch, runPackUpdateForLaunch } from './packLaunch'
 import { afterPackUpdate } from './packUpdate'
-import { requiresCopperAuth } from './ownServer'
-import { NATIVE_NEEDS_COPPER, isNativeGame } from './nativeGame'
+import { isNativeGame } from './nativeGame'
 import { stopInstall } from '../state/installs'
 
 export { PL_STAGES, REPAIR_STAGES } from './launchView'
@@ -116,55 +114,18 @@ export function ramMbFor(profile: string): number {
   return gb > 0 ? gb * 1024 : 0
 }
 
-/// Online servers verify the session either with Mojang (Microsoft licence) or with our
-/// Yggdrasil server via authlib-injector; without either the game runs offline.
-/// Only the account is named here — the core turns it into credentials.
-async function resolveAuth(profile: string | null): Promise<{ nick: string; auth: LaunchAuth }> {
+/// Minecraft launches require a verified Microsoft game session.
+async function resolveAuth(_profile: string | null): Promise<{ nick: string; auth: LaunchAuth }> {
   const acc = getAccount()
-  const offline: { nick: string; auth: LaunchAuth } = { nick: effectiveNick(), auth: { kind: 'offline' } }
-  const native = isNativeGame(useProfiles.getState().profiles.find((p) => p.name === profile))
-  const copperOnly = native || (await profileNeedsCopperAuth(profile))
-  const kind = launchAuthKind(acc, hasCopperAccount(), copperOnly)
-  if (copperOnly) {
-    if (kind !== 'copper')
-      throw new Error(native ? NATIVE_NEEDS_COPPER : 'OneBlock пускает только с аккаунтом Copper: войди в Copper и нажми «Играть» ещё раз')
-    if (!native && acc && !isCopperKind(acc.kind)) showToast('OneBlock: заходим с аккаунтом Copper')
-    return { nick: offline.nick, auth: { kind: 'copper' } }
+  if (!acc || acc.kind !== 'microsoft') {
+    throw new Error('Для запуска Minecraft добавь и выбери аккаунт Microsoft с приобретённой Java Edition')
   }
-  // A live token is required, not just a stored one: Minecraft session tokens expire after a day.
-  if (acc && kind === 'microsoft') {
-    const ms = await ensureMsAuth(acc)
-    if (ms) return { nick: acc.nick, auth: { kind: 'microsoft', accountId: ms.id, uuid: ms.uuid, xuid: ms.xuid } }
-    const relogin = await uiChoice(
-      'Вход по лицензии Microsoft истёк — сессия Minecraft больше не действует. Онлайн-серверы такой запуск не примут: игра скажет «Вы не вошли в свой аккаунт Minecraft». Войти заново?',
-      {
-        title: 'Лицензия не подтверждена',
-        confirmLabel: 'Войти заново',
-        cancelLabel: 'Играть офлайн',
-        danger: false,
-      },
-    )
-    if (relogin === 'yes') {
-      void startMsLogin()
-      throw new Error('Вход по лицензии Microsoft истёк — подтверди аккаунт и запусти игру снова')
-    }
-    if (relogin === 'dismiss') throw new Error('Запуск отменён')
-    showToast('Играем офлайн: онлайн-серверы ответят «Вы не вошли в свой аккаунт Minecraft»')
-    return offline
+  const ms = await ensureMsAuth(acc)
+  if (!ms) {
+    void startMsLogin()
+    throw new Error('Сессия Microsoft не подтверждена — войди заново и повтори запуск')
   }
-  if (acc && kind === 'elyby') {
-    if (hasLicenseSession(acc)) return { nick: acc.nick, auth: { kind: 'elyby', accountId: acc.id, uuid: acc.uuid } }
-    showToast('Вход Ely.by не найден — добавь аккаунт заново. Сейчас играем офлайн', 'error')
-    return offline
-  }
-  if (kind !== 'copper') return offline
-  return { nick: offline.nick, auth: { kind: 'copper' } }
-}
-
-async function profileNeedsCopperAuth(profile: string | null): Promise<boolean> {
-  if (!profile || !hasTauri()) return false
-  const st = await loadProfileSettings(profile).catch(() => null)
-  return !!st && (requiresCopperAuth(st.catalogPackSlug) || requiresCopperAuth(st.modpackSlug))
+  return { nick: acc.nick, auth: { kind: 'microsoft', accountId: ms.id, uuid: ms.uuid, xuid: ms.xuid } }
 }
 
 export function showLaunchError(e: unknown) {

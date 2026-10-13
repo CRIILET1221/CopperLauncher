@@ -1,5 +1,5 @@
 // Предпросмотр в обычном браузере (только dev, в релиз не попадает):
-// http://127.0.0.1:5173/?preview — API через прокси Vite и офлайн-ник, чтобы
+// http://127.0.0.1:5173/?preview — API через прокси Vite и демо-профиль интерфейса, чтобы
 // увидеть экраны без Tauri-входа. Подробно — docs/LOCAL-DEV.md.
 //
 // http://127.0.0.1:5173/?preview=user — то же плюс демо-вход: лаунчер считает,
@@ -14,7 +14,7 @@ if (import.meta.env.DEV && !('__TAURI_INTERNALS__' in window) && new URLSearchPa
   // так переключение ?preview ↔ ?preview=user работает в обе стороны.
   const seeded = demo
     ? [{ id: 'demo-user', nick: 'SlavaMine', kind: 'copper', uuid: '8f3c1a0e2b7d4e6a9c05d31f7a2b8e44', balance: 148900 }]
-    : [{ id: 'preview', nick: 'Steve', kind: 'offline' }]
+    : [{ id: 'preview', nick: 'Steve', kind: 'preview' }]
   let current: { id?: string }[] = []
   try {
     const raw = JSON.parse(localStorage.getItem('m-accounts') || 'null')
