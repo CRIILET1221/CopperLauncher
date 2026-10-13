@@ -7,6 +7,7 @@ import './styles/02-kit.css'
 import './styles/12-pixel.css'
 import './styles/copper.css'
 import './styles/copper-controls.css'
+import './styles/copper-polish.css'
 
 const profiles: Profile[] = [
   { name: 'Моя сборка', version: '1.21.1', loader: 'neoforge', fabric: false },

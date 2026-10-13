@@ -129,6 +129,13 @@ export interface AccentChange {
 export function paintAccent(a: AccentVars, settled = false) {
   const inline = document.documentElement.style
   for (const v of VARS) inline.removeProperty(v)
+  // Keep the current Copper button faces connected to the color preference.
+  inline.setProperty('--copper-face', a.c)
+  inline.setProperty('--copper-light', a.h)
+  if (/^#[\da-f]{6}$/i.test(a.c)) {
+    const dark = [1, 3, 5].map((start) => Math.round(parseInt(a.c.slice(start, start + 2), 16) * .65).toString(16).padStart(2, '0')).join('')
+    inline.setProperty('--copper-dark', '#' + dark)
+  }
   node().textContent = ':root:root{' + declarations(a) + '}'
   // Фон лобби и волна перехода перекрашиваются вслед (правка владельца 23.09.2026).
   window.dispatchEvent(new CustomEvent<AccentChange>(ACCENT_EVENT, { detail: { color: a.c, settled } }))

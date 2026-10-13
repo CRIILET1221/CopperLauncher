@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $launcher=Join-Path (Split-Path $project) 'copper-launcher'
 Copy-Item -LiteralPath "$launcher/src/styles/copper-controls.css" -Destination "$project/ui/copper-controls.css" -Force
+Copy-Item -LiteralPath "$launcher/public/copper-controls.js" -Destination "$project/ui/copper-controls.js" -Force
 $cli=Join-Path $launcher 'node_modules/@tauri-apps/cli/tauri.js'
 Copy-Item -LiteralPath "$launcher/public/fonts/OFL.txt" -Destination "$project/ui/OFL.txt" -Force
 Copy-Item -LiteralPath "$launcher/public/copper-brand-v2.png" -Destination "$project/ui/startup-block.png" -Force

@@ -30,5 +30,6 @@ for (const app of ['copper-installer', 'copper-uninstaller']) {
   for (const name of ['icon.png', 'icon.ico']) fs.copyFileSync(path.join(icons, name), path.join(sibling, 'src-tauri/icons', name))
   for (const name of ['copper-app-icon.png', 'copper-logo.png']) fs.copyFileSync(path.join(root, 'public', name), path.join(sibling, 'ui', name))
   fs.copyFileSync(path.join(root, 'src/styles/copper-controls.css'), path.join(sibling, 'ui/copper-controls.css'))
+  fs.copyFileSync(path.join(root, 'public/copper-controls.js'), path.join(sibling, 'ui/copper-controls.js'))
 }
 console.log('Generated Copper monogram and all application icons; the copper cube is preserved.')

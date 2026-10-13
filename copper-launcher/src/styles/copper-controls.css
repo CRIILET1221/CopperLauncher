@@ -13,6 +13,11 @@
   isolation: isolate;
   border: 0;
   border-radius: 0;
+  min-height: 44px;
+  padding: 11px 18px 14px;
+  gap: 9px;
+  line-height: 1.25;
+  cursor: pointer;
   background-color: var(--copper-patina) !important;
   /* Retire the old pixel frame's forced background layers. */
   background-image: none !important;
@@ -20,7 +25,7 @@
   box-shadow: none;
   clip-path: polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px),0 4px,4px 4px);
   font-weight: 750;
-  transition: transform 90ms ease, filter 120ms ease;
+  transition: transform 100ms ease-out, filter 140ms ease-out;
 }
 :root:root:root .btn::before {
   content: '';
@@ -30,7 +35,8 @@
   pointer-events: none;
   clip-path: polygon(3px 0,calc(100% - 3px) 0,calc(100% - 3px) 3px,100% 3px,100% calc(100% - 3px),calc(100% - 3px) calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,3px calc(100% - 3px),0 calc(100% - 3px),0 3px,3px 3px);
   background: var(--copper-button-fill);
-  box-shadow: inset 0 1px var(--copper-button-top), inset 0 -2px var(--copper-button-bottom);
+  box-shadow: inset 0 2px var(--copper-button-top), inset 0 -5px var(--copper-button-bottom);
+  transition: box-shadow 100ms ease-out;
 }
 :root:root:root .btn.primary {
   --copper-button-fill: var(--copper-face);
@@ -46,8 +52,11 @@
   --copper-button-bottom: #34221d;
   color: #ffdfd1;
 }
-:root:root:root .btn:hover:not(:disabled) { transform: none; filter: brightness(1.1); }
-:root:root:root .btn:active:not(:disabled) { transform: translateY(2px); filter: brightness(.94); }
+:root:root:root .btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+:root:root:root .btn:active:not(:disabled), :root:root:root .btn[data-copper-pressed]:not(:disabled) { transform: translateY(3px); filter: brightness(.94); }
+:root:root:root .btn:active:not(:disabled)::before, :root:root:root .btn[data-copper-pressed]::before { box-shadow: inset 0 3px var(--copper-button-bottom), inset 0 -1px var(--copper-button-bottom); }
+:root:root:root .btn.sm { min-height: 36px; padding: 8px 13px 11px; font-size: 13px; }
+:root:root:root .btn.lg { min-height: 52px; padding: 14px 24px 17px; font-size: 16px; }
 :root:root:root .btn:disabled { opacity: .48; cursor: not-allowed; filter: none; transform: none; }
 :root:root:root .btn:focus-visible { outline: 2px solid #f0c2a3; outline-offset: -4px; }
 /* Discrete progress cells, with visible gaps and a quiet empty track. */
@@ -60,8 +69,8 @@
   background: repeating-linear-gradient(90deg,#2a8a7a 0,#2a8a7a 12px,#1f3329 12px,#1f3329 16px);
 }
 @media (prefers-reduced-motion: reduce) {
-  :root:root:root .btn { transition: none; }
-  :root:root:root .btn:active:not(:disabled) { transform: none; }
+  :root:root:root .btn, :root:root:root .btn::before { transition: none; }
+  :root:root:root .btn:hover:not(:disabled), :root:root:root .btn:active:not(:disabled), :root:root:root .btn[data-copper-pressed]:not(:disabled) { transform: none; }
 }
 .copper-instance-picker { position: relative; width: 100%; text-align: left; }
 .copper-instance-trigger, .copper-instance-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 10px 12px; color: #e5e9df; }

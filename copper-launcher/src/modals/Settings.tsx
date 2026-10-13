@@ -74,6 +74,7 @@ import { TAB_MS_DEFAULT,useViewPrefs } from '../state/viewPrefs'
    ============================================================ */
 
 const ACCENTS: (Accent & { name: string })[] = [
+  { id: 'copper', name: 'Медь', c: '#C0694A', h: '#D9825C', s: 'rgba(192,105,74,.14)' },
   { id: 'green', name: 'Зелёный', c: '#5EC64D', h: '#70D55F', s: 'rgba(94,198,77,.13)' },
   { id: 'lime', name: 'Лайм', c: '#9BD628', h: '#ACE23F', s: 'rgba(155,214,40,.14)' },
   { id: 'teal', name: 'Бирюзовый', c: '#22C7A9', h: '#3ADBBD', s: 'rgba(34,199,169,.14)' },
@@ -121,7 +122,7 @@ function initialAccent(): string {
     const s = JSON.parse(localStorage.getItem('m-accent') || 'null')
     if (s) return s.id
   } catch {}
-  return 'green'
+  return 'copper'
 }
 
 type SecId = 'look' | 'game' | 'files' | 'account' | 'about'
