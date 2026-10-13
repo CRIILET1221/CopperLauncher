@@ -1,4 +1,4 @@
-/* Shared Copper controls: copper faces, patina outline, one pixel step. */
+/* Shared Copper controls: borderless faces and a stepped press bevel. */
 :root {
   --copper-patina: #2a8a7a;
   --copper-face: #c0694a;
@@ -18,7 +18,7 @@
   gap: 9px;
   line-height: 1.25;
   cursor: pointer;
-  background-color: var(--copper-patina) !important;
+  background-color: var(--copper-button-fill) !important;
   /* Retire the old pixel frame's forced background layers. */
   background-image: none !important;
   color: #e5e9df;
