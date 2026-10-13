@@ -1,4 +1,4 @@
-<p align="center"><img src="copper-launcher/public/copper-app-icon.png" width="96" alt="Copper Launcher icon"></p>
+<p align="center"><img src="copper-launcher/public/copper-app-icon.png" width="96" alt="Copper Launcher — copper C monogram"></p>
 
 <h1 align="center">Copper Launcher</h1>
 <p align="center">A Minecraft launcher focused on your instances, with a pixel-style interface.</p>

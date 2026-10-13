@@ -28,7 +28,7 @@ export function Titlebar() {
     <div className={'titlebar' + (IS_MAC ? ' mac' : '')}>
       <div className="tb-drag" data-tauri-drag-region="" style={{ flex: 1 }}></div>
       <div className="tb-center">
-        <img src="/copper-app-icon.png" alt="" style={{ width: '22px', height: '22px', borderRadius: '6px' }} />
+        <img src="/copper-app-icon.png" alt="" style={{ width: '22px', height: '22px', imageRendering: 'pixelated' }} />
         <span className="tb-name">COPPER LAUNCHER</span>
       </div>
       {IS_MAC ? null : (

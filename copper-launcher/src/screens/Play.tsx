@@ -1,3 +1,4 @@
+import { CopperInstancePicker } from '../components/CopperInstancePicker'
 import { Icon } from '../components/Icon'
 import { useProfiles } from '../state/profiles'
 import { useGame, stopRunningGame } from '../state/game'
@@ -25,9 +26,7 @@ export function Play({ on }: { on: boolean }) {
     <div className="copper-stage"><img src="/copper-brand-v2.png" className="copper-emblem" alt="" /><h1>Copper Launcher</h1>
 
     <div className="copper-launch">
-      {profiles.length ? <select aria-label="Инстанс" id="copper-instance" value={profile?.name || ''} disabled={prelaunch.open} onChange={(e) => setSelected(e.target.value)}>
-        {profiles.map((p) => <option key={p.name} value={p.name}>{p.name} · {p.version} · {p.loader || (p.fabric ? 'fabric' : 'vanilla')}</option>)}
-      </select> : null}
+      {profiles.length ? <CopperInstancePicker profiles={profiles} selected={profile?.name || ''} disabled={prelaunch.open || !on} onSelect={setSelected} /> : null}
       <button className="btn primary copper-play" disabled={button.kind === 'installing' || stopping} onClick={play}>
         <Icon id={button.kind === 'stop' ? 'i-power' : 'i-play'} />
         {button.kind === 'installing' ? button.stage + ' · ' + button.pct + '%' : button.kind === 'stop' ? (stopping ? 'Останавливаем…' : 'Остановить') : profile ? 'Играть' : 'Создать инстанс'}

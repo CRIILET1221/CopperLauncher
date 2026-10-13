@@ -193,7 +193,8 @@
   .st-dot, .cs-cover, .cs-res,
   /* social.css */
   .skin-card.on, .skin-card.skin-add, .cape-card.on, .cape-card.trying, .cape-card, :is(.skin-order-banner, .plus-offer, .pack-card, .load-again, .sk-login-row), :is(.skin-order-banner, .plus-offer), :is( .fr-menu, .fr-add-pop, .msg-menu, .chat-emoji-pop, .chat-srv-pop, .chat-sticker-pop, .chat-notify, .chest-reveal-box )
-),
+):not(.btn),
+/* Copper buttons use their own flat frame; legacy frames remain on panels. */
 /* псевдоэлементы в :is() не пишутся — отдельными селекторами */
 :root:root .nb-tile.on::after,
 :root:root .ph-card.prem::after,

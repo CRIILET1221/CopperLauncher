@@ -1,0 +1,81 @@
+/* Shared Copper controls: copper faces, patina outline, one pixel step. */
+:root {
+  --copper-patina: #2a8a7a;
+  --copper-face: #c0694a;
+  --copper-light: #d9825c;
+  --copper-dark: #8a4630;
+}
+:root:root:root .btn {
+  --copper-button-fill: #1f3329;
+  --copper-button-top: #344c3f;
+  --copper-button-bottom: #0f1a15;
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--copper-patina) !important;
+  /* Retire the old pixel frame's forced background layers. */
+  background-image: none !important;
+  color: #e5e9df;
+  box-shadow: none;
+  clip-path: polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px),0 4px,4px 4px);
+  font-weight: 750;
+  transition: transform 90ms ease, filter 120ms ease;
+}
+:root:root:root .btn::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(3px 0,calc(100% - 3px) 0,calc(100% - 3px) 3px,100% 3px,100% calc(100% - 3px),calc(100% - 3px) calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,3px calc(100% - 3px),0 calc(100% - 3px),0 3px,3px 3px);
+  background: var(--copper-button-fill);
+  box-shadow: inset 0 1px var(--copper-button-top), inset 0 -2px var(--copper-button-bottom);
+}
+:root:root:root .btn.primary {
+  --copper-button-fill: var(--copper-face);
+  --copper-button-top: var(--copper-light);
+  --copper-button-bottom: var(--copper-dark);
+  --px-on-accent: #101a15;
+  color: #101a15;
+}
+:root:root:root .btn.primary svg { color: currentColor; }
+:root:root:root .btn.danger, :root:root:root .btn.stop {
+  --copper-button-fill: #633d33;
+  --copper-button-top: #965a48;
+  --copper-button-bottom: #34221d;
+  color: #ffdfd1;
+}
+:root:root:root .btn:hover:not(:disabled) { transform: none; filter: brightness(1.1); }
+:root:root:root .btn:active:not(:disabled) { transform: translateY(2px); filter: brightness(.94); }
+:root:root:root .btn:disabled { opacity: .48; cursor: not-allowed; filter: none; transform: none; }
+:root:root:root .btn:focus-visible { outline: 2px solid #f0c2a3; outline-offset: -4px; }
+/* Discrete progress cells, with visible gaps and a quiet empty track. */
+.progress, .bar { background-color: #0f1a15; border-color: var(--copper-patina); }
+.progress .fill, .bar #fill {
+  background: repeating-linear-gradient(90deg,var(--copper-face) 0,var(--copper-face) 12px,#0f1a15 12px,#0f1a15 16px);
+  box-shadow: inset 0 1px var(--copper-light);
+}
+:root:root:root .btn .fill {
+  background: repeating-linear-gradient(90deg,#2a8a7a 0,#2a8a7a 12px,#1f3329 12px,#1f3329 16px);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:root:root .btn { transition: none; }
+  :root:root:root .btn:active:not(:disabled) { transform: none; }
+}
+.copper-instance-picker { position: relative; width: 100%; text-align: left; }
+.copper-instance-trigger, .copper-instance-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 10px 12px; color: #e5e9df; }
+.copper-instance-trigger { border: 1px solid #2a8a7a; border-radius: 0; background: #1f3329; font: inherit; text-align: left; cursor: pointer; }
+.copper-instance-trigger:hover:not(:disabled) { background: #263d31; }
+.copper-instance-trigger:focus-visible { outline: 2px solid #e08a63; outline-offset: 3px; }
+.copper-instance-trigger:disabled { opacity: .48; cursor: not-allowed; }
+.copper-loader-badge { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; background: #c0694a; color: #101a15; border: 1px solid #d9825c; box-shadow: inset 0 -2px #8a4630; font-size: 12px; font-weight: 750; }
+.copper-instance-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.copper-instance-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+.copper-instance-text small { font-size: 12px; color: #9cc0af; }
+.copper-instance-arrow { font-size: 16px; color: #e08a63; }
+.copper-instance-options { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40; max-height: 260px; overflow: auto; padding: 6px; border: 1px solid #2a8a7a; background: #0f1a15; box-shadow: 0 10px 24px #0006; }
+.copper-instance-option { cursor: pointer; }
+.copper-instance-option.focused, .copper-instance-option.selected { background: #1f3329; }
+.copper-instance-option.focused { box-shadow: inset 2px 0 #2a8a7a; }
+.copper-instance-check { flex-shrink: 0; width: 18px; color: #e08a63; font-weight: 750; }
