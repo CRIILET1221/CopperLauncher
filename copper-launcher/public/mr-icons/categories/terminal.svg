@@ -1,16 +1,1 @@
-<!-- @license lucide-static v0.562.0 - ISC -->
-<svg
-  class="lucide lucide-terminal"
-  xmlns="http://www.w3.org/2000/svg"
-  width="24"
-  height="24"
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="currentColor"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
->
-  <path d="M12 19h8" />
-  <path d="m4 17 6-6-6-6" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><!-- Copper original artwork, GPL-3.0-only --><g fill="none" stroke="#bfd49f" stroke-width="8" stroke-linejoin="miter" stroke-linecap="square"><path d="M34 76l22-36 15 25 12-18 18 29z"/></g></svg>

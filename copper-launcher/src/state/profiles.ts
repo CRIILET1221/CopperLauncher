@@ -6,7 +6,7 @@ import { DEMO_USER } from '../lib/demo'
 
 const DEMO_PROFILES: Profile[] = [
   { name: 'Выживание с друзьями', version: '1.21.1', fabric: true, loader: 'fabric', icon: '/build-icons/grass.png#bg=1f3b22' },
-  { name: 'Техно 1.20.1', version: '1.20.1', fabric: false, loader: 'forge', icon: '/block-icons/Block30Copper.png#bg=16304a' },
+  { name: 'Техно 1.20.1', version: '1.20.1', fabric: false, loader: 'forge', icon: '/block-icons/Block30Copper.svg#bg=16304a' },
   { name: 'Minecraft 26.2', version: '26.2', fabric: true, loader: 'fabric', icon: null },
 ]
 

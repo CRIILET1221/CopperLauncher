@@ -76,8 +76,8 @@ const ALL_GAMES: GameInfo[] = [
 
 export const GAMES: GameInfo[] = ALL_GAMES.filter((g) => !g.hidden)
 
-export const gamePoster = (slug: GameSlug) => '/games/' + slug + '/poster.jpg'
-export const gameHero = (slug: GameSlug) => '/games/' + slug + '/hero.jpg'
+export const gamePoster = (_slug: GameSlug) => '/bg/bg1.svg'
+export const gameHero = (_slug: GameSlug) => '/bg/bg2.svg'
 /*
  * «Купить» ведёт в Blups: Steam и Microsoft не продают эти игры в России,
  * а Blups продаёт пополнение Xbox и Game Pass (59 товаров от 63 ₽, blups.me/game/xbox,

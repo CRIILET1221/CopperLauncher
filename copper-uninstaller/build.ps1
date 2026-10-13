@@ -3,6 +3,7 @@ $ErrorActionPreference='Stop'
 $project=$PSScriptRoot
 $launcher=Join-Path (Split-Path $project) 'copper-launcher'
 $cli=Join-Path $launcher 'node_modules/@tauri-apps/cli/tauri.js'
+Copy-Item -LiteralPath "$launcher/public/fonts/OFL.txt" -Destination "$project/ui/OFL.txt" -Force
 Copy-Item -LiteralPath "$launcher/public/copper-brand-v2.png" -Destination "$project/ui/startup-block.png" -Force
 if(!(Test-Path -LiteralPath $cli)){throw 'Сначала выполните bun install в папке copper-launcher.'}
 Copy-Item -LiteralPath "$launcher/public/copper-app-icon.png" -Destination "$project/ui" -Force
@@ -25,7 +26,7 @@ if($RepairInstalled){
   $manifest=Join-Path $root 'installed-files.json'
   if((Get-Item -LiteralPath $manifest -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Список файлов является ссылкой.'}
   $names=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-  $allowed=@('Copper.exe','Uninstall.exe','LICENSE','NOTICE','THIRD-PARTY.md','TRADEMARK.md','uninstall.ps1','shortcuts.json','installed-files.json')
+  $allowed=@('Copper.exe','Uninstall.exe','LICENSE','NOTICE','THIRD-PARTY.md','TRADEMARK.md','OFL.txt','THIRD-PARTY-LICENSES.txt','uninstall.ps1','shortcuts.json','installed-files.json')
   foreach($name in $names){if($name -isnot [string] -or $name -notin $allowed){throw 'Некорректный список файлов.'}}
   if('Copper.exe' -notin $names){throw 'В списке файлов отсутствует Copper.exe.'}
   $target=Join-Path $root 'Uninstall.exe'

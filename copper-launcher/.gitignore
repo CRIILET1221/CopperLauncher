@@ -16,3 +16,8 @@ installer/target
 
 # Keep the bundled font license in redistributions
 !public/fonts/OFL.txt
+
+# License texts must be present in distributed web resources.
+!public/fonts/OFL.txt
+!public/licenses/
+!public/licenses/third-party.txt

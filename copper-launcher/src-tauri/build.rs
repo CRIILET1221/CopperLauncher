@@ -33,6 +33,7 @@ fn set(identifier: &str, description: &str, cmds: &[String]) -> String {
 
 fn main() {
     println!("cargo:rerun-if-env-changed=COPPER_MS_CLIENT_ID");
+    println!("cargo:rerun-if-env-changed=COPPER_ELY_CLIENT_ID");
     println!("cargo:rerun-if-changed=src/lib.rs");
 
     let src = fs::read_to_string("src/lib.rs").expect("src/lib.rs");

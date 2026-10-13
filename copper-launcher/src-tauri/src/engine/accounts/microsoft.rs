@@ -1,19 +1,14 @@
 use crate::engine::*;
 use serde_json::Value;
 
-/// Azure application client_id, baked in at compile time. Own builds should set
-/// COPPER_MS_CLIENT_ID to their own registration.
-const MS_CLIENT_ID_FALLBACK: &str = "499c8d36-be2a-4231-9ebd-ef291b7bb64c";
-
-pub(crate) fn ms_client_id() -> &'static str {
-    match option_env!("COPPER_MS_CLIENT_ID") {
-        Some(v) if !v.trim().is_empty() => v.trim(),
-        _ => MS_CLIENT_ID_FALLBACK,
-    }
+/// Only the fork maintainer's registered public application ID may be used.
+pub(crate) fn ms_client_id() -> Result<&'static str, String> {
+    option_env!("COPPER_MS_CLIENT_ID").map(str::trim).filter(|id| !id.is_empty())
+        .ok_or_else(|| "В этой сборке вход Microsoft ещё не настроен. Нужна собственная регистрация приложения Copper.".to_string())
 }
 
 pub async fn ms_device_start() -> Result<Value, String> {
-    let client_id = ms_client_id();
+    let client_id = ms_client_id()?;
     let r = client()
         .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")
         .form(&[("client_id", client_id), ("scope", "XboxLive.signin offline_access")])
@@ -30,7 +25,7 @@ pub async fn ms_device_start() -> Result<Value, String> {
 
 /// One polling step: {status:"pending"} or {status:"ok",nick,uuid,token}.
 pub async fn ms_device_poll(device_code: String) -> Result<Value, String> {
-    let client_id = ms_client_id();
+    let client_id = ms_client_id()?;
     let r = client()
         .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
         .form(&[
@@ -150,7 +145,7 @@ pub async fn ms_validate(token: String) -> Result<Value, String> {
 /// Silent renewal via the stored refresh_token; returns a fresh Minecraft token
 /// and the rotated refresh_token when Microsoft issues one.
 pub async fn ms_refresh(refresh_token: String) -> Result<Value, String> {
-    let client_id = ms_client_id();
+    let client_id = ms_client_id()?;
     let r = client()
         .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
         .form(&[

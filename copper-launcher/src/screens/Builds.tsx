@@ -174,9 +174,9 @@ export function Builds({ on }: { on: boolean }) {
       {iconless.length > 0 && !iconsSkipped ? (
         <div className="card icon-nudge">
           <span className="icon-nudge-art bx-stack" aria-hidden="true">
-            <img src="/block-icons/Block7Copper.png" alt="" />
-            <img src="/block-icons/Block20Copper.png" alt="" />
-            <img src="/block-icons/Block35Copper.png" alt="" />
+            <img src="/block-icons/Block7Copper.svg" alt="" />
+            <img src="/block-icons/Block20Copper.svg" alt="" />
+            <img src="/block-icons/Block35Copper.svg" alt="" />
           </span>
           <div className="icon-nudge-text">
             <b>{'Иконки для ' + iconless.length + ' ' + plural(iconless.length, 'сборки', 'сборок', 'сборок')}</b>

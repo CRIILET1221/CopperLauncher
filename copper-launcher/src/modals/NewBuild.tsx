@@ -27,11 +27,11 @@ import '../styles/pixel/newbuild.css'
  * поставит на выбранную версию, неактивен и говорит почему.
  */
 const LOADERS: { id: LoaderId; label: string; logo: string; sub?: string }[] = [
-  { id: 'vanilla', label: 'Vanilla', logo: '/loaders/vanilla.png', sub: 'без модов' },
-  { id: 'fabric', label: 'Fabric', logo: '/loaders/fabric.png', sub: 'моды' },
+  { id: 'vanilla', label: 'Vanilla', logo: '/loaders/vanilla.svg', sub: 'без модов' },
+  { id: 'fabric', label: 'Fabric', logo: '/loaders/fabric.svg', sub: 'моды' },
   { id: 'quilt', label: 'Quilt', logo: '/loaders/quilt.svg' },
   { id: 'forge', label: 'Forge', logo: '/loaders/forge.svg' },
-  { id: 'neoforge', label: 'NeoForge', logo: '/loaders/neoforge.png' },
+  { id: 'neoforge', label: 'NeoForge', logo: '/loaders/neoforge.svg' },
 ]
 const DEFAULT_LOADER: LoaderId = 'vanilla'
 /** Буст FPS ставит ядро (engine/game/fpsboost.rs) — моды есть под Fabric и Forge. */

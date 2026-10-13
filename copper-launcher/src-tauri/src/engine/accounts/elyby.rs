@@ -1,9 +1,11 @@
 use crate::engine::*;
 use serde_json::Value;
 
-/// Public OAuth client registered on account.ely.by as a desktop application:
-/// it carries no secret, so the id alone is safe to ship in the binary.
-const ELY_CLIENT_ID: &str = match option_env!("COPPER_ELY_CLIENT_ID") { Some(id) => id, None => "millida-launcher" }; // registered OAuth identifier; set your own before publishing
+fn ely_client_id() -> Result<&'static str, String> {
+    option_env!("COPPER_ELY_CLIENT_ID").map(str::trim).filter(|id| !id.is_empty())
+        .ok_or_else(|| "В этой сборке вход Ely.by ещё не настроен. Нужна собственная регистрация приложения Copper.".to_string())
+}
+
 const ELY_OAUTH: &str = "https://account.ely.by/api/oauth2/v1";
 const ELY_ACCOUNT_INFO: &str = "https://account.ely.by/api/account/v1/info";
 /// Ely.by answers with an http:// verification page; the launcher opens the https one.
@@ -23,9 +25,10 @@ fn ely_error(j: &Value, fallback: &str) -> String {
 }
 
 pub async fn ely_device_start() -> Result<Value, String> {
+    let client_id = ely_client_id()?;
     let r = client()
         .post(format!("{}/devicecode", ELY_OAUTH))
-        .form(&[("client_id", ELY_CLIENT_ID), ("scope", ELY_SCOPE)])
+        .form(&[("client_id", client_id), ("scope", ELY_SCOPE)])
         .send()
         .await
         .map_err(|e| net_err(&e))?;
@@ -49,10 +52,11 @@ pub async fn ely_device_start() -> Result<Value, String> {
 
 /// One polling step: {status:"pending"} or {status:"ok",nick,uuid,token}.
 pub async fn ely_device_poll(device_code: &str) -> Result<Value, String> {
+    let client_id = ely_client_id()?;
     let r = client()
         .post(format!("{}/token", ELY_OAUTH))
         .form(&[
-            ("client_id", ELY_CLIENT_ID),
+            ("client_id", client_id),
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ("device_code", device_code),
         ])

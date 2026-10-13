@@ -73,7 +73,7 @@ test('случайная иконка не повторяет предыдущу
 
 test('собранная иконка отличается от блока и от ссылки', () => {
   expect(isComposedIcon('data:image/png;base64,AAA')).toBe(true)
-  expect(isComposedIcon('/block-icons/Block1Copper.png')).toBe(false)
+  expect(isComposedIcon('/block-icons/Block1Copper.svg')).toBe(false)
   expect(isComposedIcon('https://cdn.example/icon.png')).toBe(false)
   expect(isComposedIcon(null)).toBe(false)
   expect(isComposedIcon('')).toBe(false)

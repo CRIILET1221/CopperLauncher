@@ -1,3 +1,4 @@
+import { normalizeBundledIcon } from './icons'
 /**
  * Иконка сборки как в Modrinth: квадрат глубокого цвета и блок на нём (правка
  * владельца 23.09.2026, 19:40 — «вместо фотообоев — иконки»).
@@ -11,9 +12,9 @@
  */
 
 /** Книжная полка из набора блоков Copper (правка владельца 23.09.2026, 20:00). */
-export const DEFAULT_BLOCK = '/block-icons/Block52Copper.png'
+export const DEFAULT_BLOCK = '/block-icons/Block52Copper.svg'
 /** Свой рендер травы 240 px — в наборе для выбора. */
-export const GRASS_BLOCK = '/build-icons/grass.png'
+export const GRASS_BLOCK = '/block-icons/Block3Copper.svg'
 
 /** Глубокие плотные цвета подложки. Первый — тёмное дерево под книжную полку. */
 export const ICON_BGS: string[] = [
@@ -42,7 +43,7 @@ export const MR_SYMBOLS = [
   'command-block', 'poke-ball', 'orb', 'cooking-pot', 'skillet', 'terminal', 'globe', 'pancakes', 'backpack', 'couch', 'tiny-potato',
   'blue-shark', 'brown-bear', 'moobloom', 'wrench', 'cogwheel', 'engine', 'tire', 'oxygen-distributor', 'space-helmet', 'gizmo',
 ] as const
-export const mrSymbol = (id: string) => '/build-icons/mr/' + id + '.png'
+export const mrSymbol = (id: string) => normalizeBundledIcon('/build-icons/mr/' + id + '.png')
 
 /** Градиенты подложки — те же, что у Modrinth App (сверху вниз). */
 export const MR_BGS: { id: string; top: string; bottom: string }[] = [
@@ -119,7 +120,7 @@ export function parseIcon(icon?: string | null): BuildIconSpec {
   if (!icon || icon.startsWith('/bg/')) return { src: DEFAULT_BLOCK, bg: DEFAULT_BG, kind: 'block', big: true }
   const hash = icon.indexOf('#bg=')
   const savedSrc = hash >= 0 ? icon.slice(0, hash) : icon
-  const src = savedSrc.startsWith('/block-icons/') ? savedSrc.replace(/Millida(?=\.png$)/i, 'Copper') : savedSrc
+  const src = normalizeBundledIcon(savedSrc)
   const raw = hash >= 0 ? icon.slice(hash + 4) : ''
   // Фон — цвет шестью знаками или градиент Modrinth по имени («#bg=purple»).
   const bg = bgCss(raw) || (/^[0-9a-f]{6}$/i.test(raw) ? '#' + raw.toLowerCase() : DEFAULT_BG)

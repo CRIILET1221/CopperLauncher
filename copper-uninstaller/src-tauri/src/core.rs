@@ -10,7 +10,7 @@ pub(crate) fn validate_root(root: &Path) -> Result<(), String> {
 pub(crate) fn parse_manifest(bytes: &[u8]) -> Result<Vec<String>, String> {
     let bytes=bytes.strip_prefix(&[0xef,0xbb,0xbf]).unwrap_or(bytes);
     let names: Vec<String>=serde_json::from_slice(bytes).map_err(|e|format!("Не удалось прочитать список файлов: {e}"))?;
-    let allowed=["Copper.exe","Uninstall.exe","LICENSE","NOTICE","THIRD-PARTY.md","TRADEMARK.md","uninstall.ps1","shortcuts.json","installed-files.json"];
+    let allowed=["Copper.exe","Uninstall.exe","LICENSE","NOTICE","THIRD-PARTY.md","TRADEMARK.md","OFL.txt","THIRD-PARTY-LICENSES.txt","uninstall.ps1","shortcuts.json","installed-files.json"];
     for name in &names { if !allowed.contains(&name.as_str()) { return Err(format!("Посторонний файл в списке установки: {name}")); } }
     if !names.iter().any(|name|name=="Copper.exe") { return Err("В списке установки отсутствует Copper.exe.".into()); }
     Ok(names)
@@ -30,7 +30,7 @@ pub(crate) fn delete_file(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn manifest_accepts_installer_files() { assert_eq!(parse_manifest(br#"["Copper.exe","Uninstall.exe","LICENSE","shortcuts.json"]"#).unwrap().len(),4); }
+    #[test] fn manifest_accepts_installer_files() { assert_eq!(parse_manifest(br#"["Copper.exe","Uninstall.exe","LICENSE","shortcuts.json","OFL.txt","THIRD-PARTY-LICENSES.txt"]"#).unwrap().len(),6); }
     #[test] fn manifest_rejects_foreign_paths_and_nested_arrays() { for data in [br#"["Copper.exe","../world"]"#.as_slice(),br#"[["Copper.exe"]]"#.as_slice(),br#"["Copper.exe","world"]"#.as_slice()] { assert!(parse_manifest(data).is_err()); } }
     #[test] fn manifest_requires_launcher() { assert!(parse_manifest(br#"["LICENSE"]"#).is_err()); }
 }

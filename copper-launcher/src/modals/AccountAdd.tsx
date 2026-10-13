@@ -27,7 +27,7 @@ const KINDS: { id: Kind; ic: string; title: string; sub: string }[] = [
     id: 'offline',
     ic: 'i-mo-user',
     title: 'Офлайн-аккаунт',
-    sub: 'Только ник, без лицензии',
+    sub: 'Локальный профиль для приобретённой игры',
   },
 ]
 

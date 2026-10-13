@@ -1,5 +1,5 @@
 import { coverGradient, shade } from './blockColor'
-import { BLOCK_ICONS } from './icons'
+import { BLOCK_ICONS, normalizeBundledIcon } from './icons'
 
 /// Composed icons are stored as the same 128px PNG data URL a picked cover is,
 /// so every place that already renders `profile.icon` keeps working unchanged.
@@ -60,6 +60,7 @@ export function isComposedIcon(url?: string | null): boolean {
 const imgCache = new Map<string, Promise<HTMLImageElement>>()
 
 function loadImage(src: string): Promise<HTMLImageElement> {
+  src = normalizeBundledIcon(src)
   const hit = imgCache.get(src)
   if (hit) return hit
   const task = new Promise<HTMLImageElement>((res, rej) => {
@@ -113,7 +114,7 @@ function readStore(): RecipeMap {
     const out: RecipeMap = {}
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       const r = v as Partial<IconRecipe> | null
-      if (r && typeof r.bg === 'string' && typeof r.symbol === 'string') out[k] = { bg: r.bg, symbol: r.symbol }
+      if (r && typeof r.bg === 'string' && typeof r.symbol === 'string') out[k] = { bg: r.bg, symbol: normalizeBundledIcon(r.symbol) }
     }
     return out
   } catch {

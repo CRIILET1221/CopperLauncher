@@ -10,3 +10,6 @@
 *.tsbuildinfo
 .env
 .env.*
+
+/audit-evidence/
+/.audit-build/

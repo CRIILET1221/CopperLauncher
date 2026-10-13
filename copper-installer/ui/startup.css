@@ -1,1 +1,7 @@
 html{background:#151b18;color-scheme:dark}#copper-startup{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:#151b18;opacity:1;transition:opacity .34s ease}#copper-startup img{width:112px;height:112px;object-fit:contain;image-rendering:pixelated}#copper-startup.gone{opacity:0;pointer-events:none}@media(prefers-reduced-motion:reduce){#copper-startup{transition:none}}
+
+.legal-note{position:fixed;bottom:4px;left:10px;right:10px;text-align:center;color:#aebcaf;font-size:10px;line-height:1.3;}
+
+.legal-note a{color:#bfd49f;pointer-events:auto}
+
+.font-license{display:inline-block;pointer-events:auto}.font-license summary{color:#bfd49f;cursor:pointer}.font-license pre{position:absolute;bottom:20px;left:10px;right:10px;max-height:300px;overflow:auto;padding:16px;background:#17231c;white-space:pre-wrap;text-align:left;border:1px solid #657b65;font:11px monospace}

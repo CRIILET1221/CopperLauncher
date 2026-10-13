@@ -300,7 +300,7 @@ export function allVersions(): string[] {
 }
 
 /** Фон карточки версии без своего арта: обои лаунчера по кругу. */
-export const versionArt = (i: number) => '/bg/bg' + ((i % 4) + 1) + '.jpg'
+export const versionArt = (i: number) => '/bg/bg' + ((i % 4) + 1) + '.svg'
 
 /**
  * Обложка версии — официальный key art её обновления Mojang (приказ
@@ -325,8 +325,8 @@ export const VERSION_ART: Record<string, { update: string; src: string }> = {
 }
 
 /** Картинка версии: свой арт обновления или обои лаунчера. `big` — для героя. */
-export function versionCover(version: string, i: number, big?: boolean): string {
-  return VERSION_ART[version] ? '/versions/' + version + (big ? '@2x' : '') + '.webp' : versionArt(i)
+export function versionCover(_version: string, i: number, _big?: boolean): string {
+  return versionArt(i)
 }
 
 /** Живые серверы из рейтинга: без дублей одного проекта, по онлайну. */
