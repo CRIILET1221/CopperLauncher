@@ -1,0 +1,9 @@
+.btn[data-pixel-icon]::after{content:"";display:inline-block;width:16px;height:16px;flex-shrink:0;order:-1;background:center/contain no-repeat;image-rendering:pixelated}.btn.primary[data-pixel-icon]::after{filter:brightness(.15)}
+.btn[data-pixel-icon="x"]::after{background-image:url("pixel-icons/x.svg")}
+.btn[data-pixel-icon="check"]::after{background-image:url("pixel-icons/check.svg")}
+.btn[data-pixel-icon="play"]::after{background-image:url("pixel-icons/play.svg")}
+.btn[data-pixel-icon="folder"]::after{background-image:url("pixel-icons/folder.svg")}
+.btn[data-pixel-icon="download"]::after{background-image:url("pixel-icons/download.svg")}
+.btn[data-pixel-icon="mo-trash"]::after{background-image:url("pixel-icons/mo-trash.svg")}
+.btn[data-pixel-icon="refresh"]::after{background-image:url("pixel-icons/refresh.svg")}
+.btn.primary[data-pixel-icon="folder"]::after{filter:none}

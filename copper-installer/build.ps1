@@ -4,9 +4,11 @@ $project=$PSScriptRoot
 $launcher=Join-Path (Split-Path $project) 'copper-launcher'
 Copy-Item -LiteralPath "$launcher/src/styles/copper-controls.css" -Destination "$project/ui/copper-controls.css" -Force
 Copy-Item -LiteralPath "$launcher/public/copper-controls.js" -Destination "$project/ui/copper-controls.js" -Force
+& bun (Join-Path $launcher 'scripts/generate-pixel-buttons.ts')
+if($LASTEXITCODE -ne 0){throw 'Pixel icon generation failed.'}
 $cli=Join-Path $launcher 'node_modules/@tauri-apps/cli/tauri.js'
 Copy-Item -LiteralPath "$launcher/public/fonts/OFL.txt" -Destination "$project/ui/OFL.txt" -Force
-Copy-Item -LiteralPath "$launcher/public/copper-brand-v2.png" -Destination "$project/ui/startup-block.png" -Force
+Copy-Item -LiteralPath "$launcher/public/copper-app-icon.png" -Destination "$project/ui/startup-logo.png" -Force
 if(!(Test-Path -LiteralPath $cli)){throw 'Сначала выполните bun install в папке copper-launcher.'}
 if(!$UseExistingLauncher -and !$PrepareOnly){
   Push-Location $launcher
@@ -34,6 +36,7 @@ if(Test-Path -LiteralPath $payload){Remove-Item -LiteralPath $payload}
 $z=[IO.Compression.ZipFile]::Open($payload,'Create')
 try {
   [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,$exe,'Copper.exe') | Out-Null
+  [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Join-Path $launcher 'src-tauri/icons/icon.ico'),'Copper-C.ico') | Out-Null
   [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,$uninstallExe,'Uninstall.exe') | Out-Null
   foreach($name in @('LICENSE','NOTICE','THIRD-PARTY.md','TRADEMARK.md','THIRD-PARTY-LICENSES.txt')){
     [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Join-Path $launcher $name),$name) | Out-Null

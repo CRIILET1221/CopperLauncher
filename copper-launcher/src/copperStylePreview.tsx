@@ -1,3 +1,4 @@
+import { Icon } from './components/Icon'
 import { createRoot } from 'react-dom/client'
 import { useState } from 'react'
 import { CopperInstancePicker } from './components/CopperInstancePicker'
@@ -28,7 +29,7 @@ function Preview() {
       <h1>Copper Launcher</h1>
       <div className="copper-launch">
         <CopperInstancePicker profiles={profiles} selected={selected} disabled={false} onSelect={setSelected} />
-        <button className="btn primary copper-play">▶ Играть</button>
+        <button className="btn primary copper-play"><Icon id="i-play" />Играть</button>
       </div>
       <button className="btn md secondary">Мои инстансы</button>
     </div>

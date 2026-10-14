@@ -99,7 +99,7 @@ export function IconPicker({
           <BuildIcon icon={photo ? icon : makeIcon(src, bg)} size={72} />
           <b>Иконка</b>
           <button type="button" className="btn sm secondary ip-roll" data-track="icon_random" onClick={roll}>
-            <span aria-hidden="true">🎲</span> Случайная
+            <Icon id="i-dice" /> Случайная
           </button>
           <button className="btn sm ghost ip-x" aria-label="Закрыть" data-sound="close" onClick={onClose}>
             <Icon id="i-x" />

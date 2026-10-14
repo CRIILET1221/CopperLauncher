@@ -1,3 +1,4 @@
+import { Icon } from '../components/Icon'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ensureMsAuth } from '../state/msLogin'
@@ -108,19 +109,19 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
   return createPortal(<div className="copper-skins-backdrop" data-copper-skins onDragOver={e => { e.preventDefault(); if (!disabled) setDragging(true) }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); void importFile(e.dataTransfer.files[0]) }}>
     <div className={'copper-skins' + (dragging ? ' dragging' : '')} role="dialog" aria-modal="true" aria-label="Скины">
       <header className="copper-skins-head"><b>Скины</b><div className="copper-skins-head-actions">
-        <button className="btn md secondary" disabled={disabled} aria-expanded={libraryOpen} aria-controls="copper-skin-library" onClick={() => setLibraryOpen(!libraryOpen)}>Мои скины · {library.length}</button>
-        <button className="btn sm secondary" aria-label="Закрыть" disabled={disabled} onClick={onClose}>✕</button>
+        <button className="btn md secondary" disabled={disabled} aria-expanded={libraryOpen} aria-controls="copper-skin-library" onClick={() => setLibraryOpen(!libraryOpen)}><Icon id="i-image" />Мои скины · {library.length}</button>
+        <button className="btn sm secondary" aria-label="Закрыть" disabled={disabled} onClick={onClose}><Icon id="i-x" /></button>
       </div></header>
       {libraryOpen && <section id="copper-skin-library" className="copper-skin-library" aria-label="Сохранённые скины">
-        <div className="copper-skin-library-title"><b>Сохранено на этом устройстве</b><button className="btn sm secondary" aria-label="Закрыть коллекцию" disabled={disabled} onClick={() => setLibraryOpen(false)}>✕</button></div>
+        <div className="copper-skin-library-title"><b>Сохранено на этом устройстве</b><button className="btn sm secondary" aria-label="Закрыть коллекцию" disabled={disabled} onClick={() => setLibraryOpen(false)}><Icon id="i-x" /></button></div>
         {library.length ? <div className="copper-skin-grid">{library.map(item => <div key={item.id} className={'copper-skin-tile' + (selectedId === item.id ? ' selected' : '')}>
           <button className="copper-skin-pick" disabled={disabled} onClick={() => selectSkin(item)} title={item.name}><img src={item.face} alt="" /><span>{item.name}</span></button>
-          <button className="copper-skin-delete" disabled={disabled} aria-label={'Удалить сохранённый скин ' + item.name} onClick={() => removeSaved(item.id)}>×</button>
+          <button className="copper-skin-delete" disabled={disabled} aria-label={'Удалить сохранённый скин ' + item.name} onClick={() => removeSaved(item.id)}><Icon id="i-x" /></button>
         </div>)}</div> : <p className="copper-skins-hint">Перетащи PNG или выбери файл — скин автоматически сохранится здесь.</p>}
       </section>}
       <div className="copper-skins-layout">
         <div className="copper-skin-view">
-          {skin ? <SkinPreview src={skin} slim={slim} /> : <button className="copper-skin-empty" disabled={disabled} onClick={() => fileInput.current?.click()}><span aria-hidden="true">＋</span><b>Перетащи скин сюда</b><small>или нажми, чтобы выбрать PNG</small></button>}
+          {skin ? <SkinPreview src={skin} slim={slim} /> : <button className="copper-skin-empty" disabled={disabled} onClick={() => fileInput.current?.click()}><Icon id="i-plus" style={{width:40,height:40}} /><b>Перетащи скин сюда</b><small>или нажми, чтобы выбрать PNG</small></button>}
           {dragging && <div className="copper-skin-drop-hint">Отпусти PNG, чтобы сохранить скин</div>}
         </div>
         <div className="copper-skins-settings">
@@ -131,7 +132,7 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
           <label className="copper-skins-field"><span>Аккаунт Microsoft</span><select aria-label="Аккаунт Microsoft" value={account} disabled={disabled} onChange={e => setAccount(e.target.value)}><option value="">Выбери аккаунт</option>{accounts.filter(a => a.kind === 'microsoft').map(a => <option key={a.id} value={a.id}>{a.nick}</option>)}</select></label>
           {!account && <p className="copper-skins-hint">Коллекция и 3D-превью доступны без входа. Для применения нужен аккаунт Microsoft.</p>}
           {message && <p className="copper-skin-message" role="status">{message}</p>}
-          <div className="copper-skins-actions"><button className="btn md secondary" disabled={!account || disabled} onClick={() => void run(true)}>Сбросить</button><button className="btn md primary" disabled={!account || !skin || disabled} onClick={() => void run(false)}>{busy ? 'Применяем…' : 'Применить'}</button></div>
+          <div className="copper-skins-actions"><button className="btn md secondary" disabled={!account || disabled} onClick={() => void run(true)}><Icon id="i-refresh" />Сбросить</button><button className="btn md primary" disabled={!account || !skin || disabled} onClick={() => void run(false)}><Icon id="i-check" />{busy ? 'Применяем…' : 'Применить'}</button></div>
         </div>
       </div>
     </div>

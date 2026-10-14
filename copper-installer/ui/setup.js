@@ -2,7 +2,7 @@ const {invoke}=window.__TAURI__.core;
 const el=id=>document.getElementById(id);
 let current=0,installedPath='',busy=false,choosing=false;
 function error(message){el('error').textContent=String(message);el('error').hidden=!message}
-function view(n){current=n;['setup','install','finish'].forEach((id,i)=>{el(id).hidden=i!==n;el('s'+i).className='step'+(i===n?' active':i<n?' done':'')});el('action').textContent=['Установить','Устанавливаем…','Завершить'][n]}
+function view(n){el('action').dataset.pixelIcon=n===2?'check':n===1?'refresh':'download';current=n;['setup','install','finish'].forEach((id,i)=>{el(id).hidden=i!==n;el('s'+i).className='step'+(i===n?' active':i<n?' done':'')});el('action').textContent=['Установить','Устанавливаем…','Завершить'][n]}
 function progress({percent,stage}){document.querySelector('.fill').style.width=percent+'%';document.querySelector('[role=progressbar]').setAttribute('aria-valuenow',percent);el('percent').textContent=percent+'%';el('stage').textContent=stage;el('detail').textContent=percent<90?'Copper Launcher':'Ярлыки и параметры установки'}
 el('close').onclick=()=>invoke('close_setup');
 el('begin').onclick=()=>{el('welcome').hidden=true;el('layout').hidden=false};

@@ -58,7 +58,7 @@ if(Test-Path -LiteralPath $key){
   else{throw 'Запись установки изменилась. Повторите удаление.'}
 }
 "#;
-fn remove_installation(app: &tauri::AppHandle, root: &Path) -> Result<(), String> {
+fn remove_installation(app: &tauri::AppHandle, root: &Path, clear_data: bool) -> Result<(), String> {
     validate_root(root)?;
     report(app, 5, "Проверка установки…");
     let manifest=root.join("installed-files.json");
@@ -68,6 +68,12 @@ fn remove_installation(app: &tauri::AppHandle, root: &Path) -> Result<(), String
     let records=root.join("shortcuts.json");
     if removable(&records)? { let _:Vec<String>=serde_json::from_slice(&fs::read(&records).map_err(|e|e.to_string())?.into_iter().skip_while(|b|matches!(*b,0xef|0xbb|0xbf)).collect::<Vec<_>>()).map_err(|e|format!("Не удалось прочитать список ярлыков: {e}"))?; }
     powershell(VERIFY,root)?;
+    if clear_data {
+        report(app, 10, "Очистка настроек и кэша. Инстансы сохраняются…");
+        let roaming=PathBuf::from(std::env::var_os("APPDATA").ok_or("Не найдена папка AppData")?).join("io.copper.launcher");
+        let local=PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or("Не найдена папка LocalAppData")?).join("io.copper.launcher");
+        core::clean_launcher_data(&roaming,&local)?;
+    }
     report(app, 15, "Удаление файлов лаунчера…");
     // Keep the manifest and uninstall program until Windows cleanup succeeds so a failed attempt can be retried.
     let files:Vec<_>=names.iter().filter(|n|!matches!(n.as_str(),"Uninstall.exe"|"uninstall.ps1"|"shortcuts.json"|"installed-files.json")).collect();
@@ -88,11 +94,11 @@ fn installation_path(state: tauri::State<Installation>) -> Result<String,String>
 #[tauri::command]
 fn close_uninstaller(app:tauri::AppHandle) { if !BUSY.load(Ordering::SeqCst) { app.exit(0); } }
 #[tauri::command]
-async fn uninstall(app:tauri::AppHandle) -> Result<(),String> {
+async fn uninstall(app:tauri::AppHandle, clear_data: bool) -> Result<(),String> {
     if BUSY.swap(true,Ordering::SeqCst) { return Err("Удаление уже выполняется.".into()); }
     let root=app.state::<Installation>().0.clone();
     let result=match root {
-        Ok(root)=>tauri::async_runtime::spawn_blocking(move||remove_installation(&app,&root)).await.map_err(|e|e.to_string()).and_then(|r|r),
+        Ok(root)=>tauri::async_runtime::spawn_blocking(move||remove_installation(&app,&root,clear_data)).await.map_err(|e|e.to_string()).and_then(|r|r),
         Err(e)=>Err(e),
     };
     BUSY.store(false,Ordering::SeqCst);result

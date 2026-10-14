@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { PxIcon } from './PxIcon'
 
 export function Icon({
   id,
@@ -9,9 +10,5 @@ export function Icon({
   className?: string
   style?: CSSProperties
 }) {
-  return (
-    <svg className={className} style={style}>
-      <use href={'#' + id} />
-    </svg>
-  )
+  return <PxIcon name={id.replace(/^i-/, '')} className={className} style={style} />
 }

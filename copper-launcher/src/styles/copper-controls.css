@@ -10,6 +10,9 @@
   --copper-button-top: #344c3f;
   --copper-button-bottom: #0f1a15;
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   isolation: isolate;
   border: 0;
   border-radius: 0;
@@ -88,3 +91,16 @@
 .copper-instance-option.focused, .copper-instance-option.selected { background: #1f3329; }
 .copper-instance-option.focused { box-shadow: inset 2px 0 #2a8a7a; }
 .copper-instance-check { flex-shrink: 0; width: 18px; color: #e08a63; font-weight: 750; }
+/* Frameless installer/uninstaller close buttons match the launcher title bar. */
+:root .titlebar #close.copper-window-close {
+  display: grid; place-items: center; flex-shrink: 0; margin-left: auto;
+  width: 44px; height: 34px; min-height: 0; padding: 0; border: 0;
+  background: #1f2d25; color: #b7c7bc; cursor: pointer;
+  clip-path: polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% 100%,0 100%,0 4px,4px 4px);
+  transition: background-color 120ms ease,color 120ms ease;
+}
+:root .titlebar #close.copper-window-close:hover:not(:disabled) { background: #3c2522; color: #f19a7f; }
+:root .titlebar #close.copper-window-close:active:not(:disabled) { background: #65382d; }
+:root .titlebar #close.copper-window-close:focus-visible { outline: 2px solid #e08a63; outline-offset: -3px; }
+:root .titlebar #close.copper-window-close:disabled { opacity: .45; cursor: not-allowed; }
+@media(prefers-reduced-motion: reduce) { :root .titlebar #close.copper-window-close { transition: none; } }

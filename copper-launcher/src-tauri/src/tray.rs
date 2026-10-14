@@ -113,7 +113,12 @@ pub fn init(app: &AppHandle) {
                 _ => {}
             }
         });
-    if let Some(icon) = app.default_window_icon().cloned() {
+    let tray_icon = image::load_from_memory(include_bytes!("../icons/32x32.png")).ok().map(|image| {
+        let rgba = image.into_rgba8();
+        let (width, height) = rgba.dimensions();
+        tauri::image::Image::new_owned(rgba.into_raw(), width, height)
+    }).or_else(|| app.default_window_icon().cloned());
+    if let Some(icon) = tray_icon {
         b = b.icon(icon);
     }
     if b.build(app).is_ok() {

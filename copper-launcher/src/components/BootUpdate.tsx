@@ -15,7 +15,7 @@ export function BootUpdate() {
   return (
     <div className="boot-upd">
       <div className="boot-upd-card">
-        <img src="/copper-brand-v2.png" alt="" width={44} height={44} />
+        <img src="/copper-app-icon.png" alt="" width={44} height={44} />
         <div className="boot-upd-title">{TITLES[phase]}</div>
         <div className="boot-upd-sub">{version ? 'Версия ' + version : 'Copper Launcher'}</div>
         <div className="boot-upd-bar">

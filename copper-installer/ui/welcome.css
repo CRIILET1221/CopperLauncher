@@ -7,3 +7,6 @@
 #close{width:44px;height:38px;padding:0;font:30px/1 'Segoe UI',sans-serif;background:transparent;box-shadow:none;clip-path:none}#close:hover{background:#794637}
 #error{padding:12px;margin:14px 0 0;background:#3d2822;border-left:3px solid #c47b52;white-space:pre-wrap;overflow-wrap:anywhere;flex-shrink:0}#error:empty{display:none}
 @media(prefers-reduced-motion:reduce){.btn,.fill{transition:none}}
+
+/* Folder action centered below the path field. */
+#browse{display:flex;justify-content:center;width:max-content;max-width:100%;margin:24px auto 8px}

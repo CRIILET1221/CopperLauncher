@@ -2141,7 +2141,7 @@ export function InstancePage() {
                           .catch((e) => showToast('Иконка не сохранилась: ' + e, 'error'))
                       }}
                     >
-                      <span aria-hidden="true">🎲</span> Случайная
+                      <Icon id="i-dice" /> Случайная
                     </button>
                   </div>
                 </div>

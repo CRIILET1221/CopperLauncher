@@ -40,15 +40,19 @@ const REGISTER: &str = r#"
 $ErrorActionPreference='Stop'
 $root=$env:COPPER_INSTALL_DIR
 $exe=Join-Path $root 'Copper.exe'
+$icon=Join-Path $root 'Copper-C.ico'
 $shell=New-Object -ComObject WScript.Shell
 $script:shortcutPaths=@()
 function Shortcut($folder) {
   $p=Join-Path $folder 'Copper Launcher.lnk'
   $i=2
-  while(Test-Path -LiteralPath $p){$p=Join-Path $folder "Copper Launcher ($i).lnk";$i++}
+  while(Test-Path -LiteralPath $p){
+    if($shell.CreateShortcut($p).TargetPath -eq $exe){break}
+    $p=Join-Path $folder "Copper Launcher ($i).lnk";$i++
+  }
   $script:shortcutPaths+= $p
   ConvertTo-Json -InputObject @($script:shortcutPaths) | Set-Content -LiteralPath (Join-Path $root 'shortcuts.json') -Encoding UTF8
-  $s=$shell.CreateShortcut($p);$s.TargetPath=$exe;$s.WorkingDirectory=$root;$s.IconLocation="$exe,0";$s.Save()
+  $s=$shell.CreateShortcut($p);$s.TargetPath=$exe;$s.WorkingDirectory=$root;$s.IconLocation="$icon,0";$s.Save()
 }
 if($env:COPPER_DESKTOP -eq '1'){Shortcut ([Environment]::GetFolderPath('Desktop'))}
 if($env:COPPER_MENU -eq '1'){Shortcut ([Environment]::GetFolderPath('Programs'))}
@@ -63,7 +67,7 @@ New-ItemProperty $key -Name DisplayName -Value 'Copper Launcher' -Force | Out-Nu
 New-ItemProperty $key -Name DisplayVersion -Value '2.0.0' -Force | Out-Null
 New-ItemProperty $key -Name Publisher -Value 'Copper contributors' -Force | Out-Null
 New-ItemProperty $key -Name InstallLocation -Value $root -Force | Out-Null
-New-ItemProperty $key -Name DisplayIcon -Value $exe -Force | Out-Null
+New-ItemProperty $key -Name DisplayIcon -Value $icon -Force | Out-Null
 $uninstall=Join-Path $root 'Uninstall.exe'
 New-ItemProperty $key -Name UninstallString -Value ('"'+$uninstall+'"') -Force | Out-Null
 New-ItemProperty $key -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
@@ -109,6 +113,7 @@ if(Test-Path $key){
             progress(app, (10+70*(i+1)/count.max(1)) as u8, "Распаковка Copper Launcher…");
         }
         if !path.join("Copper.exe").is_file(){return Err("В пакете отсутствует Copper.exe".into())}
+        if !path.join("Copper-C.ico").is_file(){return Err("В пакете отсутствует иконка Copper-C.ico. Пересоберите установщик.".into())}
         if !path.join("Uninstall.exe").is_file(){return Err("В пакете отсутствует Uninstall.exe".into())}
         let shortcuts=path.join("shortcuts.json");fs::write(&shortcuts,b"[]").map_err(|e|e.to_string())?;created.push(shortcuts);
         let names:Vec<String>=created.iter().map(|p|p.file_name().unwrap().to_string_lossy().into()).collect();
