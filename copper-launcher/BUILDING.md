@@ -1,12 +1,6 @@
-# Как собрать Millida Launcher самому
+# Как собрать Copper Launcher самому
 
-<p align="center">
-  <a href="https://github.com/millida/launcher/raw/main/.github/readme/build-guide.mp4"><img src=".github/readme/build-guide.gif" alt="Сборка лаунчера из исходников: клонирование, зависимости, сборка установщика" width="100%"></a>
-  <br>
-  <a href="https://github.com/millida/launcher/raw/main/.github/readme/build-guide.mp4"><b>Смотреть видео целиком (MP4, 75 с)</b></a>
-</p>
-
-Три команды. Первая сборка — 10–20 минут, смотря какой компьютер. Дальше — быстрее: Rust пересобирает только изменённое.
+Первая сборка — 10–20 минут, смотря какой компьютер. Дальше быстрее: Rust пересобирает только изменённое.
 
 ## 1. Поставь инструменты
 
@@ -52,49 +46,41 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## 2. Собери
 
 ```bash
-git clone https://github.com/millida/launcher.git
-cd launcher
+git clone -c core.longpaths=true https://github.com/CRIILET1221/CopperLauncher.git
+cd CopperLauncher/copper-launcher
 bun install
-bun run tauri build
 ```
 
-Хочешь собрать ровно ту версию, что вышла на сайте, — переключись на её тег перед сборкой:
+**Windows** — фирменный установщик Copper. Одна команда собирает лаунчер,
+деинсталлятор и упаковывает их в `Copper-Setup.exe`:
+
+```powershell
+bun run build:setup
+```
+
+Классический NSIS-установщик на Windows не собирается: `bun run tauri build`
+здесь даёт только `copper-launcher.exe` без установщика.
+
+**macOS и Linux:**
 
 ```bash
-git checkout v2.0.177
+bun run tauri build
 ```
-
-Список версий — на странице [релизов](https://github.com/millida/launcher/releases).
 
 ## 3. Забери результат
 
 | Система | Где лежит |
 | --- | --- |
-| Windows | `src-tauri\target\release\bundle\nsis\Millida Launcher_<версия>_x64-setup.exe` |
-| macOS | `src-tauri/target/release/bundle/dmg/` и `bundle/macos/Millida Launcher.app` |
+| Windows | `outputs\Copper-Setup.exe` в корне репозитория (рядом лежит `Uninstall.exe`) |
+| macOS | `src-tauri/target/release/bundle/dmg/` и `bundle/macos/Copper Launcher.app` |
 | Linux | `src-tauri/target/release/bundle/` — `deb/`, `rpm/`, `appimage/` |
 
 Запустить без установки, прямо из исходников: `bun run tauri dev`.
 
-## Чем твоя сборка отличается от нашей
+## Подпись и обновления
 
-| | Твоя сборка | С millida.net |
-| --- | --- | --- |
-| Код | Тот же, что в этом репозитории | Тот же: каждый релиз здесь — коммит, из которого собран установщик |
-| Цифровая подпись | Нет — Windows покажет «Неизвестный издатель» | Есть. Ключ подписи не публикует ни один разработчик: с ним любой выпустил бы вирус от нашего имени |
-| Версия | `2.0.0` | Номер сборки, например `2.0.177` |
-| Обновления | При первом запуске лаунчер сам обновится до официальной версии | Ставятся сами |
-
-Остаться на своей сборке — перед `bun run tauri build` поменяй `"version": "2.0.0"` на `"version": "99.0.0"` в [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json). Номер выше нашего — обновление сборку не тронет.
-
-Обновление проверяется подписью из [`tauri.conf.json`](src-tauri/tauri.conf.json) (`plugins.updater.pubkey`): подменённый файл лаунчер не установит.
-
-## Как проверить официальный установщик
-
-- Скачивай только с [millida.net/launcher](https://millida.net/launcher) или со страницы [релизов](https://github.com/millida/launcher/releases). Всё остальное — не наше.
-- Windows: правый клик по файлу → «Свойства» → «Цифровые подписи» → «Подпись действительна».
-- Что файл из релиза собран здесь, из этого кода: каждый установщик собирает [workflow Release](.github/workflows/release.yml) на серверах GitHub, и GitHub подписывает, из какого коммита он получен. Проверка — `gh attestation verify <файл> -R millida/launcher`, или скачай `provenance.sigstore.json` из релиза и добавь `--bundle provenance.sigstore.json`.
-- Отчёт VirusTotal по каждому установщику — [millida.net/launcher/antivirus](https://millida.net/launcher/antivirus).
+Сборка не подписана цифровой подписью — Windows покажет «Неизвестный издатель».
+Автообновление в Copper отключено: новую версию собирай и ставь сам.
 
 ## Если не собирается
 
@@ -104,6 +90,7 @@ git checkout v2.0.177
 | `bun` или `cargo` «не является командой» | Перезапусти терминал после установки |
 | `webkit2gtk-4.1 not found` | Не поставлены пакеты из шага 1 для Linux |
 | AppImage падает на `linuxdeploy` | Собери без него: `bun run tauri build --bundles deb` |
-| Что-то другое | [Заведи issue](https://github.com/millida/launcher/issues/new/choose) и приложи вывод команды |
+| `Filename too long` при клонировании | Клонируй с `-c core.longpaths=true`, как в шаге 2 |
+| Что-то другое | [Заведи issue](https://github.com/CRIILET1221/CopperLauncher/issues) и приложи вывод команды |
 
-Хочешь прислать правку — [CONTRIBUTING.md](CONTRIBUTING.md). Форк под своим именем — [TRADEMARK.md](TRADEMARK.md).
+Хочешь прислать правку — [CONTRIBUTING.md](CONTRIBUTING.md). Условия бренда оригинального проекта — [TRADEMARK.md](TRADEMARK.md).

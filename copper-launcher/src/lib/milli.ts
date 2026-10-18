@@ -439,12 +439,12 @@ export interface MilliError {
 const ERROR_TEXT: Record<MilliErrorKind, string> = {
   auth: 'Войди в аккаунт Copper',
   limit: 'Лимит на сегодня',
-  busy: 'Милли ещё думает над прошлым',
-  blocked: 'Милли тебе недоступна',
-  off: 'Милли отдыхает — скоро вернётся',
+  busy: 'ИИ-помощник ещё думает над прошлым',
+  blocked: 'ИИ-помощник тебе недоступен',
+  off: 'ИИ-помощник отключён',
   plus: 'Это в PLUS',
   offline: 'Нет связи с Copper',
-  failed: 'Милли не ответила',
+  failed: 'ИИ-помощник не ответил',
 }
 
 const err = (kind: MilliErrorKind, scope?: 'day' | 'month'): MilliError => ({

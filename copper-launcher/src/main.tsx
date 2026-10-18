@@ -36,6 +36,7 @@ import './styles/pixel/shop.css'
 import './styles/pixel/social.css'
 import './styles/copper-controls.css'
 import './styles/copper-polish.css'
+import './styles/copper-refine.css'
 
 if (!import.meta.env.DEV) {
   document.addEventListener('contextmenu', (e) => {

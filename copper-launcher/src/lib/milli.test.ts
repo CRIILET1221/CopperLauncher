@@ -97,7 +97,7 @@ test('milliError: коды из тела, статусы, текст ядра', 
   // В приложении ядро отдаёт только message сервера.
   expect(milliError('Лимит Милли на сегодня исчерпан').kind).toBe('limit')
   expect(milliError('Милли ещё думает над прошлым запросом').kind).toBe('busy')
-  expect(milliError('something odd').text).toBe('Милли не ответила')
+  expect(milliError('something odd').text).toBe('ИИ-помощник не ответил')
 })
 
 test('refineMilliError: статус после сбоя точнее текста', () => {

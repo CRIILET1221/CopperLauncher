@@ -2,7 +2,7 @@
 /// провайдеров (Antilopay, Enot) и сам сайт. Ссылку с другим хостом не
 /// открываем — подменённый ответ или запись в localStorage не уведёт на фишинг
 /// (аудит 24.09.2026).
-const PAY_DOMAINS = ['antilopay.com', 'enot.io', 'copper.net']
+const PAY_DOMAINS: string[] = []
 
 export function isPaymentUrl(url: string | null | undefined): boolean {
   if (!url) return false

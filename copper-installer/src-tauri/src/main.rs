@@ -29,7 +29,7 @@ fn powershell(script: &str, target: &Path, desktop: bool, menu: bool) -> Result<
     let mut child = Command::new("powershell.exe").creation_flags(0x08000000)
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
         .env("COPPER_INSTALL_DIR", target).env("COPPER_DESKTOP", if desktop {"1"} else {"0"})
-        .env("COPPER_MENU", if menu {"1"} else {"0"})
+        .env("COPPER_MENU", if menu {"1"} else {"0"}).env("COPPER_VERSION", env!("CARGO_PKG_VERSION"))
         .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let start=std::time::Instant::now();
     loop {if child.try_wait().map_err(|e|e.to_string())?.is_some(){break} if start.elapsed()>std::time::Duration::from_secs(30){let _=child.kill();let _=child.wait();return Err("Windows не завершила настройку за 30 секунд. Повторите установку.".into())} std::thread::sleep(std::time::Duration::from_millis(100));}
@@ -64,7 +64,7 @@ if(Test-Path $key){
 }
 New-Item $key -Force | Out-Null
 New-ItemProperty $key -Name DisplayName -Value 'Copper Launcher' -Force | Out-Null
-New-ItemProperty $key -Name DisplayVersion -Value '2.0.0' -Force | Out-Null
+New-ItemProperty $key -Name DisplayVersion -Value $env:COPPER_VERSION -Force | Out-Null
 New-ItemProperty $key -Name Publisher -Value 'Copper contributors' -Force | Out-Null
 New-ItemProperty $key -Name InstallLocation -Value $root -Force | Out-Null
 New-ItemProperty $key -Name DisplayIcon -Value $icon -Force | Out-Null

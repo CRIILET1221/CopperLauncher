@@ -41,7 +41,7 @@ const IDLE_LABEL = 'Войти через аккаунт Copper'
 // The browser does not always come up (no default browser, a portable build, a
 // second machine). Saying where the code goes turns a dead end into a two-step
 // login: copper.net/auth/launcher has a field for exactly this code.
-const MANUAL_HINT = 'Подтверди код на странице Copper. Не открылась — зайди на copper.net/auth/launcher и введи код там.'
+const MANUAL_HINT = 'ÐÐ¾Ð´ÑÐ²ÐµÑÐ´Ð¸ ÐºÐ¾Ð´ Ð² Ð¾ÑÐºÑÑÐ²ÑÐµÐ¼ÑÑ Ð¾ÐºÐ½Ðµ Ð±ÑÐ°ÑÐ·ÐµÑÐ°.'
 
 export const useLogin = create<LoginState>((set) => ({
   webLabel: IDLE_LABEL,

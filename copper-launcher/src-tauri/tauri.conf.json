@@ -165,7 +165,6 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
       "app",
       "dmg",
       "deb",
@@ -173,7 +172,7 @@
       "appimage"
     ],
     "publisher": "Copper contributors",
-    "copyright": "Based on Millida Launcher; GPL-3.0-only",
+    "copyright": "Copper contributors; GPL-3.0-only",
     "category": "Game",
     "shortDescription": "Copper Launcher — Minecraft instances",
     "longDescription": "Independent Minecraft launcher with local instances, account management and Modrinth catalog.",
@@ -206,16 +205,7 @@
     },
     "windows": {
       "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com",
-      "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
-        "installerHooks": "installer-hooks.nsh",
-        "languages": [
-          "Russian",
-          "English"
-        ]
-      }
+      "timestampUrl": "http://timestamp.digicert.com"
     },
     "createUpdaterArtifacts": false
   },

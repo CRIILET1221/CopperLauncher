@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copper Launcher — лаунчер Minecraft</title>
+<meta name="description" content="Copper Launcher — бесплатный лаунчер Minecraft с открытым кодом: сборки Fabric, Forge, NeoForge и Quilt, каталог Modrinth, вход через Microsoft, без телеметрии.">
+<meta name="theme-color" content="#151b18">
+<link rel="icon" href="assets/copper-monogram.svg" type="image/svg+xml">
+<meta property="og:title" content="Copper Launcher">
+<meta property="og:description" content="Бесплатный лаунчер Minecraft с открытым кодом. Сборки, моды из Modrinth, вход через Microsoft.">
+<meta property="og:image" content="assets/shot-home.png">
+<style>
+/*
+ * Страница загрузки Copper Launcher. Один файл, без сборки и без внешних
+ * библиотек: шрифты и картинки лежат рядом в папке assets.
+ * Цвета и «ступенчатые» углы кнопок те же, что в самом лаунчере.
+ */
+@font-face { font-family: 'Geist'; src: url('assets/fonts/Geist-Variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Unbounded'; src: url('assets/fonts/Unbounded-latin.woff2') format('woff2'); font-weight: 200 900; font-display: swap; }
+
+:root {
+  --bg: #151b18;
+  --bg-2: #1a231e;
+  --surface: #1e2a23;
+  --surface-2: #243128;
+  --line: #34463b;
+  --fg: #e7ece5;
+  --muted: #aebdb1;
+  --faint: #879a8c;
+  --copper: #c0694a;
+  --copper-light: #d9825c;
+  --copper-dark: #8a4630;
+  --copper-text: #f0b48f;
+  --patina: #2a8a7a;
+  --patina-light: #5fc7b1;
+  --step: polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 4px) calc(100% - 4px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 4px),0 calc(100% - 4px),0 4px,4px 4px);
+  --step-lg: polygon(8px 0,calc(100% - 8px) 0,calc(100% - 8px) 8px,100% 8px,100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,8px calc(100% - 8px),0 calc(100% - 8px),0 8px,8px 8px);
+  --max: 1120px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+a { color: var(--copper-text); }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--copper-light); outline-offset: 3px; }
+::selection { background: var(--copper); color: #101a15; }
+
+.wrap { width: min(100% - 32px, var(--max)); margin: 0 auto; }
+section { padding: 88px 0; }
+.eyebrow { margin: 0 0 12px; font-size: 13px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--patina-light); }
+h2 { margin: 0 0 16px; font-size: clamp(28px, 4vw, 40px); line-height: 1.15; letter-spacing: -.5px; }
+.lead { margin: 0; max-width: 620px; color: var(--muted); font-size: 18px; }
+
+/* ── Пиксельные кнопки, как в лаунчере ───────────────────────────────── */
+.btn {
+  --fill: #1f3329; --top: #344c3f; --bottom: #0f1a15;
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 48px; padding: 12px 22px 15px;
+  border: 0; color: var(--fg); text-decoration: none; font: inherit; font-weight: 750; cursor: pointer;
+  background: var(--fill); clip-path: var(--step);
+  box-shadow: inset 0 2px var(--top), inset 0 -5px var(--bottom);
+  transition: transform 100ms ease-out, filter 140ms ease-out;
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+.btn:active { transform: translateY(3px); filter: brightness(.94); box-shadow: inset 0 3px var(--bottom), inset 0 -1px var(--bottom); }
+.btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+.btn.primary { --fill: var(--copper); --top: var(--copper-light); --bottom: var(--copper-dark); color: #101a15; }
+.btn.lg { min-height: 60px; padding: 15px 30px 19px; font-size: 19px; }
+
+/* ── Шапка ───────────────────────────────────────────────────────────── */
+.top {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(21, 27, 24, .86); backdrop-filter: blur(10px);
+  border-bottom: 1px solid #263229;
+}
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; }
+.brand { display: flex; align-items: center; gap: 12px; color: var(--fg); text-decoration: none; }
+.brand img { width: 32px; height: 32px; image-rendering: pixelated; }
+.brand b { font-family: 'Unbounded', 'Geist', sans-serif; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
+.top nav { display: flex; align-items: center; gap: 26px; }
+.top nav a:not(.btn) { color: var(--muted); text-decoration: none; font-size: 15px; font-weight: 600; }
+.top nav a:not(.btn):hover { color: var(--fg); }
+.top .btn { min-height: 40px; padding: 8px 16px 11px; font-size: 14px; }
+
+/* ── Главный блок ────────────────────────────────────────────────────── */
+.hero {
+  padding: 72px 0 96px;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 0%, rgba(42, 138, 122, .16), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 50% 100%, rgba(192, 105, 74, .10), transparent 70%);
+  text-align: center;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px; padding: 6px 14px;
+  background: #1c2a22; border: 1px solid var(--line); color: var(--muted); font-size: 14px; clip-path: var(--step);
+}
+.badge i { width: 8px; height: 8px; background: var(--patina-light); }
+.hero h1 {
+  margin: 0 auto 20px; max-width: 820px;
+  font-size: clamp(36px, 6.2vw, 64px); line-height: 1.06; letter-spacing: -1.4px;
+}
+.hero h1 em {
+  font-style: normal;
+  background: linear-gradient(180deg, #f2c29f 0%, #d9825c 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero .lead { margin: 0 auto 36px; }
+.cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.meta { margin: 18px 0 0; color: var(--faint); font-size: 14px; }
+
+.window {
+  position: relative; margin: 64px auto 0; max-width: 1000px;
+  background: #0f1512; padding: 6px; clip-path: var(--step-lg);
+  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, .8);
+}
+.window::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--patina); }
+.window img { width: 100%; height: auto; clip-path: var(--step); }
+.glow { position: absolute; inset: 10% 15% -6%; z-index: -2; background: radial-gradient(ellipse at center, rgba(192, 105, 74, .25), transparent 65%); filter: blur(40px); }
+
+/* ── Возможности ─────────────────────────────────────────────────────── */
+.features { background: var(--bg-2); border-top: 1px solid #222d26; border-bottom: 1px solid #222d26; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+.card {
+  padding: 26px; background: var(--surface); border: 1px solid var(--line);
+  transition: transform 180ms cubic-bezier(.16,1,.3,1), border-color 180ms ease;
+}
+.card:hover { transform: translateY(-3px); border-color: var(--patina); }
+.card .ic {
+  display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 18px;
+  background: #2a3a2f; clip-path: var(--step); color: var(--copper-text);
+}
+.card .ic svg { width: 24px; height: 24px; }
+.card h3 { margin: 0 0 8px; font-size: 19px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* ── Экраны ──────────────────────────────────────────────────────────── */
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 44px; }
+.shots figure { margin: 0; }
+.shots .window { margin: 0; }
+.shots figcaption { margin-top: 14px; color: var(--muted); font-size: 15px; }
+.shots figcaption b { color: var(--fg); }
+
+/* ── Установка ───────────────────────────────────────────────────────── */
+.install { background: var(--bg-2); border-top: 1px solid #222d26; border-bottom: 1px solid #222d26; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 44px 0 0; padding: 0; list-style: none; counter-reset: step; }
+.steps li { position: relative; padding: 26px 26px 26px 84px; background: var(--surface); border: 1px solid var(--line); counter-increment: step; }
+.steps li::before {
+  content: counter(step);
+  position: absolute; left: 24px; top: 24px;
+  display: grid; place-items: center; width: 42px; height: 42px;
+  background: var(--copper); color: #101a15; font-weight: 800; font-size: 20px;
+  clip-path: var(--step); box-shadow: inset 0 2px var(--copper-light), inset 0 -4px var(--copper-dark);
+}
+.steps h3 { margin: 0 0 6px; font-size: 18px; }
+.steps p { margin: 0; color: var(--muted); font-size: 15px; }
+.note {
+  display: flex; gap: 14px; margin-top: 22px; padding: 18px 20px;
+  background: #22281d; border: 1px solid #4d4a2c; color: #e2dcb8; font-size: 15px;
+}
+.note svg { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; color: #e8c05a; }
+.req { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 22px; }
+.req div { padding: 18px 20px; border: 1px dashed var(--line); }
+.req b { display: block; font-size: 13px; letter-spacing: .8px; text-transform: uppercase; color: var(--faint); margin-bottom: 4px; }
+.req span { font-weight: 650; }
+
+/* ── Вопросы ─────────────────────────────────────────────────────────── */
+.faq { max-width: 820px; margin: 40px auto 0; display: grid; gap: 12px; }
+.faq details { background: var(--surface); border: 1px solid var(--line); }
+.faq summary {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 20px 22px; cursor: pointer; list-style: none; font-weight: 700; font-size: 17px;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: '+'; color: var(--copper-text); font-size: 24px; font-weight: 400; line-height: 1; transition: transform 160ms ease; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { margin: 0; padding: 0 22px 20px; color: var(--muted); }
+
+/* ── Финальный призыв и подвал ───────────────────────────────────────── */
+.final { text-align: center; padding: 96px 0; background: radial-gradient(ellipse 60% 70% at 50% 100%, rgba(42, 138, 122, .14), transparent 70%); }
+.final img { width: 72px; height: 72px; margin: 0 auto 22px; image-rendering: pixelated; }
+.final .lead { margin: 0 auto 32px; }
+footer { padding: 32px 0 40px; border-top: 1px solid #222d26; color: var(--faint); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
+footer p { margin: 0; }
+footer a { color: var(--muted); }
+
+/* ── Появление блоков при прокрутке ──────────────────────────────────── */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 600ms ease, transform 600ms cubic-bezier(.16,1,.3,1); }
+.reveal.in { opacity: 1; transform: none; }
+.no-js .reveal { opacity: 1; transform: none; }
+
+/* ── Телефоны и планшеты ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .grid, .steps { grid-template-columns: 1fr 1fr; }
+  .req { grid-template-columns: 1fr 1fr; }
+  .top nav a:not(.btn) { display: none; }
+}
+@media (max-width: 640px) {
+  section { padding: 64px 0; }
+  .hero { padding: 48px 0 64px; }
+  .grid, .steps, .shots, .req { grid-template-columns: 1fr; }
+  .lead { font-size: 16px; }
+  .cta .btn { width: 100%; }
+  .window { margin-top: 44px; }
+  .brand b { font-size: 13px; }
+}
+</style>
+</head>
+<body class="no-js">
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/copper-monogram.svg" alt=""><b>Copper Launcher</b></a>
+    <nav aria-label="Разделы страницы">
+      <a href="#features">Возможности</a>
+      <a href="#install">Установка</a>
+      <a href="#faq">Вопросы</a>
+      <a class="btn primary" href="https://github.com/CRIILET1221/CopperLauncher/releases/latest">Скачать</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <span class="badge"><i></i>Бесплатно · Открытый код · Без рекламы</span>
+      <h1>Лаунчер Minecraft <em>без лишнего</em></h1>
+      <p class="lead">Создавай сборки на Fabric, Forge, NeoForge и Quilt, ставь моды из Modrinth в один клик и играй с лицензией Microsoft. Без магазина, без телеметрии, без навязчивых окон.</p>
+      <div class="cta">
+        <a class="btn primary lg" href="https://github.com/CRIILET1221/CopperLauncher/releases/latest">
+          <svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M5 0h2v6h2v1H8v1H7v1H5V8H4V7H3V6h2zM0 10h12v2H0z"/></svg>
+          Скачать для Windows
+        </a>
+        <a class="btn lg" href="https://github.com/CRIILET1221/CopperLauncher">
+          <svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M3 2h2v1H4v1H3v1H2v2h1v1h1v1h1v1H3V9H2V8H1V7H0V5h1V4h1V3h1zM7 2h2v1h1v1h1v1h1v2h-1v1h-1v1H9v1H7V9h1V8h1V7h1V5H9V4H8V3H7z"/></svg>
+          Исходный код
+        </a>
+      </div>
+      <p class="meta">Windows 10 и 11 · 64-бит · нужна лицензия Minecraft: Java Edition</p>
+      <div class="window reveal"><div class="glow"></div><img src="assets/shot-home.png" alt="Главный экран Copper Launcher: выбор сборки и кнопка «Играть»" width="1280" height="800"></div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="wrap">
+      <p class="eyebrow">Возможности</p>
+      <h2>Всё для игры — и ничего сверху</h2>
+      <p class="lead">Copper делает одно дело хорошо: ставит Minecraft, моды и запускает игру.</p>
+      <div class="grid">
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M1 1h4v4H1zM7 1h4v4H7zM1 7h4v4H1zM7 7h4v4H7z"/></svg></span>
+          <h3>Сборки на любой вкус</h3>
+          <p>Ванилла, Fabric, Forge, NeoForge и Quilt. Каждая сборка живёт в своей папке со своими модами и мирами.</p>
+        </article>
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M5 0h2v6h2v1H8v1H7v1H5V8H4V7H3V6h2zM0 10h12v2H0z"/></svg></span>
+          <h3>Каталог Modrinth</h3>
+          <p>Моды, сборки, ресурспаки и шейдеры прямо в лаунчере. Нужные зависимости подтянутся сами.</p>
+        </article>
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M2 1h8v1h1v5h-1v2H9v1H8v1H4v-1H3V9H2V7H1V2h1z"/></svg></span>
+          <h3>Вход через Microsoft</h3>
+          <p>Официальная авторизация Microsoft. Пароль вводится только на сайте Microsoft, лаунчер его не видит.</p>
+        </article>
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M3 0h6v2h1v4H9v1H8v1H4V7H3V6H2V2h1zM2 9h8v1h1v2H1v-2h1z"/></svg></span>
+          <h3>Скины в 3D</h3>
+          <p>Смотри скин в объёме, храни коллекцию на компьютере и меняй скин аккаунта в пару кликов.</p>
+        </article>
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M3 1h6v1h1v3h1v6H1V5h1V2h1zm1 1v3h4V2zm1 5v2h2V7z"/></svg></span>
+          <h3>Без телеметрии</h3>
+          <p>Лаунчер не собирает статистику и не следит за тобой. Он обращается только к Mojang, Microsoft и каталогам модов.</p>
+        </article>
+        <article class="card reveal">
+          <span class="ic"><svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M3 2h2v1H4v1H3v1H2v2h1v1h1v1h1v1H3V9H2V8H1V7H0V5h1V4h1V3h1zM7 2h2v1h1v1h1v1h1v2h-1v1h-1v1H9v1H7V9h1V8h1V7h1V5H9V4H8V3H7z"/></svg></span>
+          <h3>Открытый код</h3>
+          <p>Весь код на GitHub под лицензией GPL-3.0. Можно проверить, что внутри, и собрать лаунчер самому.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <p class="eyebrow">Как это выглядит</p>
+      <h2>Тёмный, спокойный, пиксельный</h2>
+      <div class="shots">
+        <figure class="reveal">
+          <div class="window"><img src="assets/shot-instances.png" alt="Экран «Инстансы» со списком сборок" width="1280" height="800" loading="lazy"></div>
+          <figcaption><b>Инстансы.</b> Все сборки на одном экране — открыть, настроить или запустить.</figcaption>
+        </figure>
+        <figure class="reveal">
+          <div class="window"><img src="assets/shot-catalog.png" alt="Каталог модов Modrinth в лаунчере" width="1280" height="800" loading="lazy"></div>
+          <figcaption><b>Каталог.</b> Поиск по Modrinth и установка в выбранную сборку.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="install" id="install">
+    <div class="wrap">
+      <p class="eyebrow">Установка</p>
+      <h2>Три шага до игры</h2>
+      <ol class="steps">
+        <li class="reveal">
+          <h3>Скачай установщик</h3>
+          <p>Нажми «Скачать для Windows» и возьми файл <b>Copper-Setup.exe</b> со страницы последнего релиза.</p>
+        </li>
+        <li class="reveal">
+          <h3>Запусти и установи</h3>
+          <p>Выбери папку и нажми «Установить». Права администратора не нужны: лаунчер ставится только для тебя.</p>
+        </li>
+        <li class="reveal">
+          <h3>Войди и играй</h3>
+          <p>Нажми на «Аккаунты» → «Войти через Microsoft», создай сборку — Java лаунчер скачает сам.</p>
+        </li>
+      </ol>
+      <div class="note reveal">
+        <svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M5 0h2v1h1v2h1v2h1v2h1v2h1v3H0V9h1V7h1V5h1V3h1V1h1zm0 4v4h2V4zm0 5v2h2V9z"/></svg>
+        <span>Если Windows покажет «Windows защитила ваш компьютер», нажми <b>«Подробнее»</b> → <b>«Выполнить в любом случае»</b>. Так бывает со всеми программами без платной цифровой подписи. Код лаунчера открыт — его можно проверить на GitHub.</span>
+      </div>
+      <div class="req reveal">
+        <div><b>Система</b><span>Windows 10 или 11, 64-бит</span></div>
+        <div><b>Игра</b><span>Лицензия Minecraft: Java Edition</span></div>
+        <div><b>Память</b><span>от 4 ГБ ОЗУ, лучше 8 ГБ</span></div>
+        <div><b>Компоненты</b><span>WebView2 (в Windows 11 уже есть)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <p class="eyebrow" style="text-align:center">Вопросы</p>
+      <h2 style="text-align:center">Частые вопросы</h2>
+      <div class="faq">
+        <details>
+          <summary>Это бесплатно?</summary>
+          <p>Да, полностью. В лаунчере нет платных функций, подписок и рекламы.</p>
+        </details>
+        <details>
+          <summary>Нужна ли лицензия Minecraft?</summary>
+          <p>Да. Для запуска нужен аккаунт Microsoft с купленной Minecraft: Java Edition. Пиратские и офлайн-аккаунты Copper не поддерживает.</p>
+        </details>
+        <details>
+          <summary>Это безопасно? Лаунчер не украдёт аккаунт?</summary>
+          <p>Вход идёт через официальную страницу Microsoft — пароль ты вводишь там, а не в лаунчере. Токены хранятся на твоём компьютере в зашифрованном виде. Весь код открыт и доступен на GitHub.</p>
+        </details>
+        <details>
+          <summary>Почему Windows предупреждает о неизвестном издателе?</summary>
+          <p>У установщика нет платной цифровой подписи. Это не значит, что файл опасен: так Windows реагирует на любые неподписанные программы. Нажми «Подробнее» → «Выполнить в любом случае».</p>
+        </details>
+        <details>
+          <summary>Где хранятся мои миры и сборки?</summary>
+          <p>В папке данных лаунчера на твоём компьютере. Если удалить лаунчер, сборки и миры останутся на месте.</p>
+        </details>
+        <details>
+          <summary>Есть версия для macOS или Linux?</summary>
+          <p>Пока готовый установщик есть только для Windows. Код поддерживает macOS и Linux — лаунчер можно собрать самому по инструкции на GitHub.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <img src="assets/copper-monogram.svg" alt="">
+      <h2>Готов играть?</h2>
+      <p class="lead">Скачай Copper Launcher и запусти свою первую сборку за пару минут.</p>
+      <a class="btn primary lg" href="https://github.com/CRIILET1221/CopperLauncher/releases/latest">
+        <svg viewBox="0 0 12 12" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M5 0h2v6h2v1H8v1H7v1H5V8H4V7H3V6h2zM0 10h12v2H0z"/></svg>
+        Скачать для Windows
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Copper Launcher · открытый код под лицензией <a href="https://github.com/CRIILET1221/CopperLauncher/blob/main/LICENSE">GPL-3.0</a> · <a href="https://github.com/CRIILET1221/CopperLauncher">GitHub</a></p>
+    <p>Не является официальным продуктом Minecraft. Не одобрен Mojang или Microsoft и не связан с ними.</p>
+  </div>
+</footer>
+
+<script>
+  // Блоки плавно появляются, когда до них доходит прокрутка.
+  document.body.classList.remove('no-js')
+  const items = document.querySelectorAll('.reveal')
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target) }
+    }, { rootMargin: '0px 0px -8% 0px' })
+    items.forEach((el) => io.observe(el))
+  } else {
+    items.forEach((el) => el.classList.add('in'))
+  }
+</script>
+</body>
+</html>

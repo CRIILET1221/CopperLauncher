@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ensureMsAuth } from '../state/msLogin'
 import { SkinPreview } from '../components/SkinPreview'
-import { useAccounts } from '../state/accounts'
+import { hasLicenseSession, useAccounts } from '../state/accounts'
+import { openModal } from '../state/ui'
+import { openMicrosoftAccount } from './AccountAdd'
+import { monogramAvatar, onAvatarError } from '../lib/format'
 import { msUploadSkin, msResetSkin, msProfile, readSkinPng } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
 import { listenDragDrop, listenDragState } from '../ipc/events'
@@ -11,10 +14,36 @@ import type { UnlistenFn } from '../ipc/tauri'
 import { decodeLocalSkin, readSkinLibrary, writeSkinLibrary, type SavedSkin } from '../lib/localSkins'
 import '../styles/copper-skins.css'
 
+/// Только официальный адрес текстур Minecraft: ссылка попадает в CSS `url()`.
+const SKIN_URL = /^https:\/\/textures\.minecraft\.net\/texture\/[0-9a-f]+$/
+
+/// Окно «Профиль»: аккаунт, которым играешь, его скин и управление аккаунтами.
+/// Открывается кнопкой с ником в верхней панели, когда вход уже выполнен.
 export function CopperSkins({ onClose }: { onClose: () => void }) {
   const accounts = useAccounts(s => s.list)
   const active = useAccounts(s => s.active)
-  const [account, setAccount] = useState(accounts.find(a => a.id === active && a.kind === 'microsoft')?.id || accounts.find(a => a.kind === 'microsoft')?.id || '')
+  // Профиль показывает активный аккаунт; скин применяется к нему же.
+  const current = accounts.find(a => a.id === active) || accounts.find(a => a.kind === 'microsoft') || accounts[0]
+  const account = current && current.kind === 'microsoft' ? current.id : ''
+  const others = accounts.filter(a => a.id !== current?.id)
+  const online = !!current && hasLicenseSession(current)
+  const [skinUrl, setSkinUrl] = useState('')
+  const [confirmOut, setConfirmOut] = useState(false)
+  // Аватар — лицо текущего скина аккаунта Microsoft. Ссылку на скин отдаёт
+  // профиль Minecraft; лицо вырезается из неё в CSS (.copper-profile-face.skin).
+  // Пока ссылки нет (или вход истёк), показывается заглушка с буквой ника.
+  useEffect(() => {
+    setSkinUrl('')
+    if (!hasTauri() || !current || current.kind !== 'microsoft' || !online) return
+    let alive = true
+    void msProfile(current.id).then(p => { if (alive && p.skin && SKIN_URL.test(p.skin)) setSkinUrl(p.skin) }).catch(() => {})
+    return () => { alive = false }
+  }, [current?.id, online])
+  useEffect(() => {
+    if (!confirmOut) return
+    const t = setTimeout(() => setConfirmOut(false), 4000)
+    return () => clearTimeout(t)
+  }, [confirmOut])
   const fileInput = useRef<HTMLInputElement>(null)
   const [filename, setFilename] = useState('')
   const [skin, setSkin] = useState('')
@@ -30,6 +59,26 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
   busyRef.current = busy
   const disabled = busy || importing
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  // Окно закрывается с той же анимацией, что и остальные окна: сначала класс
+  // `closing` проигрывает исчезновение (copper-skins.css), потом окно убирается.
+  const [closing, setClosing] = useState(false)
+  const close = useCallback(() => {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 200)
+  }, [closing, onClose])
+  // Окно входа открывается, когда профиль уже убрался, чтобы окна не накладывались.
+  const addAccount = () => { close(); setTimeout(() => openModal('accModal'), 210) }
+  const relogin = () => { close(); setTimeout(openMicrosoftAccount, 210) }
+  const switchTo = (id: string) => { useAccounts.getState().setActive(id); setMessage(''); setConfirmOut(false) }
+  // Выход в два нажатия: первое спрашивает «Точно выйти?», второе выходит.
+  const signOut = () => {
+    if (!current) return
+    if (!confirmOut) { setConfirmOut(true); return }
+    setConfirmOut(false)
+    useAccounts.getState().remove(current.id)
+    if (!useAccounts.getState().list.length) close()
+  }
   const selectSkin = (item: SavedSkin) => {
     setSkin(item.png); setFilename(item.name); setSlim(item.slim); setSelectedId(item.id); setLibraryOpen(false); setMessage('')
   }
@@ -69,9 +118,9 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
     return () => { alive = false; stops.forEach(stop => stop()) }
   }, [importData])
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopImmediatePropagation(); event.preventDefault(); if (!disabled) { if (libraryOpen) setLibraryOpen(false); else onClose() } } }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopImmediatePropagation(); event.preventDefault(); if (!disabled) { if (libraryOpen) setLibraryOpen(false); else close() } } }
     document.addEventListener('keydown', key, true); return () => document.removeEventListener('keydown', key, true)
-  }, [disabled, libraryOpen, onClose])
+  }, [disabled, libraryOpen, close])
   const changeModel = (next: boolean) => {
     setSlim(next)
     if (!selectedId) return
@@ -91,6 +140,7 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
       if (!await ensureMsAuth(selectedAccount)) throw new Error('Сессия Microsoft истекла. Войди в аккаунт заново.')
       if (reset) {
         await msResetSkin(account)
+        void msProfile(account).then(p => setSkinUrl(p.skin && SKIN_URL.test(p.skin) ? p.skin : '')).catch(() => {})
         setMessage('Скин сброшен. Перезапусти Minecraft.')
       } else {
         const uploaded = await msUploadSkin(account, skin.split(',')[1], slim)
@@ -101,17 +151,30 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
         const accounts = useAccounts.getState()
         accounts.save(accounts.list.map(a => a.id === account ? { ...a, nick: profile.nick, uuid: profile.uuid, avatar: undefined, avatarFrom: undefined } : a))
         accounts.setActive(account)
+        if (profile.skin && SKIN_URL.test(profile.skin)) setSkinUrl(profile.skin)
         setMessage('Скин подтверждён для ' + profile.nick + '. Этот аккаунт выбран для запуска. Полностью закрой Minecraft и запусти его снова.')
       }
     } catch(e) { setMessage(String(e)) } finally { setBusy(false) }
   }
 
-  return createPortal(<div className="copper-skins-backdrop" data-copper-skins onDragOver={e => { e.preventDefault(); if (!disabled) setDragging(true) }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); void importFile(e.dataTransfer.files[0]) }}>
-    <div className={'copper-skins' + (dragging ? ' dragging' : '')} role="dialog" aria-modal="true" aria-label="Скины">
-      <header className="copper-skins-head"><b>Скины</b><div className="copper-skins-head-actions">
+  return createPortal(<div className={'copper-skins-backdrop' + (closing ? ' closing' : '')} data-copper-skins onDragOver={e => { e.preventDefault(); if (!disabled) setDragging(true) }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }} onDrop={e => { e.preventDefault(); setDragging(false); void importFile(e.dataTransfer.files[0]) }}>
+    <div className={'copper-skins' + (dragging ? ' dragging' : '')} role="dialog" aria-modal="true" aria-label="Профиль">
+      <header className="copper-skins-head"><b>Профиль</b><div className="copper-skins-head-actions">
         <button className="btn md secondary" disabled={disabled} aria-expanded={libraryOpen} aria-controls="copper-skin-library" onClick={() => setLibraryOpen(!libraryOpen)}><Icon id="i-image" />Мои скины · {library.length}</button>
-        <button className="btn sm secondary" aria-label="Закрыть" disabled={disabled} onClick={onClose}><Icon id="i-x" /></button>
+        <button className="btn sm secondary" aria-label="Закрыть" disabled={disabled} onClick={close}><Icon id="i-x" /></button>
       </div></header>
+      {current && <section className="copper-profile" aria-label="Аккаунт">
+        {skinUrl
+          ? <span className="copper-profile-face skin" role="img" aria-label={'Голова скина ' + current.nick} style={{ backgroundImage: `url("${skinUrl}")` }}><span style={{ backgroundImage: `url("${skinUrl}")` }} /></span>
+          : <img className="copper-profile-face" src={current.avatar || monogramAvatar(current.nick, 48)} alt="" width={48} height={48} onError={e => onAvatarError(e, 48, current.nick)} />}
+        <div className="copper-profile-info">
+          <b title={current.nick}>{current.nick}</b>
+          <span className={'copper-profile-status' + (online ? ' ok' : ' warn')}>{current.kind === 'microsoft' ? 'Лицензия Microsoft' : 'Аккаунт'} · {online ? 'вход выполнен' : 'нужно войти заново'}</span>
+        </div>
+        {!online && current.kind === 'microsoft' && <button className="btn sm primary" disabled={disabled} onClick={relogin}><Icon id="i-refresh" />Войти заново</button>}
+      </section>}
+      {others.length > 0 && <div className="copper-profile-switch"><span>Другие аккаунты</span>{others.map(a => <button key={a.id} className="btn sm secondary" disabled={disabled} onClick={() => switchTo(a.id)}><Icon id="i-mo-user" />{a.nick}</button>)}</div>}
+      <p className="copper-profile-cap">Скин</p>
       {libraryOpen && <section id="copper-skin-library" className="copper-skin-library" aria-label="Сохранённые скины">
         <div className="copper-skin-library-title"><b>Сохранено на этом устройстве</b><button className="btn sm secondary" aria-label="Закрыть коллекцию" disabled={disabled} onClick={() => setLibraryOpen(false)}><Icon id="i-x" /></button></div>
         {library.length ? <div className="copper-skin-grid">{library.map(item => <div key={item.id} className={'copper-skin-tile' + (selectedId === item.id ? ' selected' : '')}>
@@ -129,12 +192,15 @@ export function CopperSkins({ onClose }: { onClose: () => void }) {
           <div className="copper-skin-file"><button className="btn md secondary" disabled={disabled} onClick={() => fileInput.current?.click()}>{importing ? 'Открываем…' : 'Выбрать PNG'}</button><span title={filename}>{filename || 'Файл не выбран'}</span></div>
           <input ref={fileInput} hidden type="file" accept="image/png" disabled={disabled} aria-label="Выбрать скин" onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void importFile(file) }} />
           <label className="copper-skins-field"><span>Модель персонажа</span><select aria-label="Модель персонажа" value={slim ? 'slim' : 'classic'} disabled={disabled} onChange={e => changeModel(e.target.value === 'slim')}><option value="classic">Classic — широкие руки</option><option value="slim">Slim — узкие руки</option></select></label>
-          <label className="copper-skins-field"><span>Аккаунт Microsoft</span><select aria-label="Аккаунт Microsoft" value={account} disabled={disabled} onChange={e => setAccount(e.target.value)}><option value="">Выбери аккаунт</option>{accounts.filter(a => a.kind === 'microsoft').map(a => <option key={a.id} value={a.id}>{a.nick}</option>)}</select></label>
-          {!account && <p className="copper-skins-hint">Коллекция и 3D-превью доступны без входа. Для применения нужен аккаунт Microsoft.</p>}
+          {!account && <p className="copper-skins-hint">Чтобы применить скин в игре, нужен вход в аккаунт Microsoft.</p>}
           {message && <p className="copper-skin-message" role="status">{message}</p>}
           <div className="copper-skins-actions"><button className="btn md secondary" disabled={!account || disabled} onClick={() => void run(true)}><Icon id="i-refresh" />Сбросить</button><button className="btn md primary" disabled={!account || !skin || disabled} onClick={() => void run(false)}><Icon id="i-check" />{busy ? 'Применяем…' : 'Применить'}</button></div>
         </div>
       </div>
+      <footer className="copper-profile-foot">
+        <button className="btn md secondary" disabled={disabled} onClick={addAccount}><Icon id="i-plus" />Добавить аккаунт</button>
+        {current && <button className={'btn md ' + (confirmOut ? 'danger' : 'secondary')} disabled={disabled} onClick={signOut}><Icon id="i-logout" />{confirmOut ? 'Точно выйти?' : 'Выйти'}</button>}
+      </footer>
     </div>
   </div>, document.body)
 }

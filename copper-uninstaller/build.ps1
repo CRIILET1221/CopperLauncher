@@ -17,7 +17,9 @@ Push-Location $project
 try { & node $cli build --no-bundle; if($LASTEXITCODE -ne 0){throw 'Сборка деинсталлятора завершилась ошибкой.'} } finally {Pop-Location}
 $exe=Join-Path $project 'src-tauri/target/release/copper-uninstall.exe'
 if(!(Test-Path -LiteralPath $exe)){throw 'Нет готового Uninstall.exe.'}
-Copy-Item -LiteralPath $exe -Destination (Join-Path (Split-Path $project) 'Uninstall.exe') -Force
+$outputs=Join-Path (Split-Path $project) 'outputs'
+New-Item -ItemType Directory -Force -Path $outputs | Out-Null
+Copy-Item -LiteralPath $exe -Destination (Join-Path $outputs 'Uninstall.exe') -Force
 if($RepairInstalled){
   $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\CopperLauncher'
   if(!(Test-Path -LiteralPath $key)){throw 'Copper не зарегистрирован в Windows.'}

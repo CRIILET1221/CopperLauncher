@@ -46,5 +46,8 @@ try {
 if($PrepareOnly){Write-Host 'Пакет и ресурсы подготовлены.';exit}
 Push-Location $project
 try { & node $cli build --no-bundle; if($LASTEXITCODE -ne 0){throw 'Сборка установщика завершилась ошибкой.'} } finally {Pop-Location}
-Copy-Item -LiteralPath "$project/src-tauri/target/release/copper-setup.exe" -Destination (Join-Path (Split-Path $project) 'Copper-Setup.exe') -Force
-Write-Host 'Готово: outputs/Copper-Setup.exe'
+$outputs=Join-Path (Split-Path $project) 'outputs'
+New-Item -ItemType Directory -Force -Path $outputs | Out-Null
+$setup=Join-Path $outputs 'Copper-Setup.exe'
+Copy-Item -LiteralPath "$project/src-tauri/target/release/copper-setup.exe" -Destination $setup -Force
+Write-Host "Готово: $setup"

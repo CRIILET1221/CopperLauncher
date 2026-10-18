@@ -14,6 +14,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:release": "tauri build --config src-tauri/tauri.release.conf.json",
+    "build:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ../copper-installer/build.ps1",
+    "build:uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File ../copper-uninstaller/build.ps1",
     "build:fast": "bun scripts/build.mjs fast",
     "build:fast:bundle": "bun scripts/build.mjs fast-bundle",
     "build:timings": "bun scripts/build.mjs fast --timings",

@@ -27,7 +27,7 @@ The [published general OAuth guide](https://docs.ely.by/en/oauth.html) describes
 
 For the official Copper project, ordinary `bun run tauri build` and `copper-installer/build.ps1` builds automatically use the maintainer's Microsoft registration. No secret, redirect URI or Microsoft tenant ID is embedded. Approval must still be confirmed and a real sign-in tested before publishing a working Microsoft login claim. Rebuild the launcher before packaging it; an old executable does not gain this configuration automatically.
 
-From the `copper-launcher` folder, build the custom installer (the result is `Copper-Setup.exe` in the repository root):
+From the `copper-launcher` folder, build the custom installer (the result is `outputs/Copper-Setup.exe`):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ..\copper-installer\build.ps1

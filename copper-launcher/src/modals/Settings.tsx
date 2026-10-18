@@ -628,8 +628,8 @@ export function Settings({ on }: { on: boolean }) {
     <>
       <Block keys="лицензия авторство официальный minecraft gpl">
         <p>Неофициальный лаунчер Minecraft. Не одобрен Mojang или Microsoft и не связан с ними.</p>
-        <p>Copper — форк Millida под GPL-3.0-only. Автор форка: CRIILET1221.</p>
-        <p>Лицензии и авторство сохранены в файлах установки LICENSE, NOTICE и THIRD-PARTY.md.</p>
+        <p>Copper Launcher — открытый проект под GPL-3.0-only. Автор: CRIILET1221.</p>
+        <p>Авторские права на исходный код и лицензии сторонних компонентов — в файлах установки LICENSE, NOTICE и THIRD-PARTY.md.</p>
       </Block>
       <Block keys="версия обновление обновить проверить">
         <div className="s2-hero">

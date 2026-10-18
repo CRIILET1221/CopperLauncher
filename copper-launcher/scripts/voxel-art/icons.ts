@@ -4,7 +4,7 @@
  * Открывается dev-сервером Vite: http://127.0.0.1:5173/scripts/voxel-art/icons.html
  * Знак (плитка со срезанными углами + белый глиф) выдавлен с фасками, у каждой иконки
  * свой материал и сцена. Кадр — квадрат 1024 «в край»: скругление, поля и тень
- * накладывает scripts/gen-app-icons.py. Сохранить: PAGE=icons node scripts/voxel-art/save.mjs <папка>.
+ * (скрипт наложения иконок удалён вместе с брендом оригинала). Сохранить: PAGE=icons node scripts/voxel-art/save.mjs <папка>.
  * В сборку лаунчера не входит.
  */
 import * as THREE from 'three'

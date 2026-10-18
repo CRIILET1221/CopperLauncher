@@ -13,3 +13,4 @@
 
 /audit-evidence/
 /.audit-build/
+**/.vite/

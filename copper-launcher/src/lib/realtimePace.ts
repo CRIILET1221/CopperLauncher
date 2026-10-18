@@ -4,7 +4,7 @@ import { readPresencePush, readTypingPush } from './friendsPush'
 export const REALTIME_TOPICS = ['friends', 'presence', 'calls', 'inbox', 'hosting', 'account', 'party'] as const
 export type RealtimeTopic = (typeof REALTIME_TOPICS)[number]
 
-export const REALTIME_HOST = 'api.copper.net'
+export const REALTIME_HOST = 'removed-service.invalid'
 export const REALTIME_SOCKET_URL = 'wss://' + REALTIME_HOST + '/v2/realtime/connection/websocket'
 export const REALTIME_CLIENT_NAME = 'launcher'
 export const REALTIME_OFF_RETRY_MS = 600_000

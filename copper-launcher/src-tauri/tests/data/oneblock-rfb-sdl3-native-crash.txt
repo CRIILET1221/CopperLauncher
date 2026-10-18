@@ -1,8 +1,8 @@
 [0.009s][warning][cds] Archived non-system classes are disabled because the java.system.class.loader property is specified (value = "com.gtnewhorizons.retrofuturabootstrap.RfbSystemClassLoader"). To use archived non-system classes, this property must not be set
 WARNING: package sun.lwawt.macosx not in java.desktop
-[authlib-injector] [INFO] Logging file: ~\AppData\Roaming\net.millida.launcher\minecraft\profiles\OneBlock\authlib-injector.log
+[authlib-injector] [INFO] Logging file: ~\AppData\Roaming\io.copper.launcher\minecraft\profiles\OneBlock\authlib-injector.log
 [authlib-injector] [INFO] Version: 1.2.8
-[authlib-injector] [INFO] Authentication server: https://api.millida.net/v2/yggdrasil
+[authlib-injector] [INFO] Authentication server: copper-disabled://removed-service/v2/yggdrasil
 [19:35:44] [RFB-Main/INFO] [LaunchWrapper]: Constructing tweaker cpw.mods.fml.common.launcher.FMLTweaker
 [19:35:44] [RFB-Main/INFO] [LaunchWrapper]: Installing tweaker cpw.mods.fml.common.launcher.FMLTweaker
 [19:35:44] [RFB-Main/INFO] [FML]: Forge Mod Loader version 7.99.40.1614 for Minecraft 1.7.10 loading

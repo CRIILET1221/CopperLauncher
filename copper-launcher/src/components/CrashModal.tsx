@@ -190,7 +190,7 @@ export function CrashModal() {
               })
             }}
           >
-            <Icon id="i-sparkle" /> Починить с Милли
+            <Icon id="i-sparkle" /> Починить с ИИ-помощником
           </button>
           <button
             className="btn lg secondary"
@@ -263,7 +263,7 @@ function CrashAi({ info }: { info: CrashInfo }) {
       const answer = await milliCrash(crashAskBody(info, mods, profile))
       setState({ step: 'done', explain: answer.explain, steps: answer.steps, offers: crashDisableOffers(answer, mods) })
     } catch (e) {
-      showToast('Милли не смогла разобрать вылет: ' + e, 'error')
+      showToast('ИИ-помощник не смог разобрать вылет: ' + e, 'error')
       setState({ step: 'idle' })
     }
   }
@@ -272,7 +272,7 @@ function CrashAi({ info }: { info: CrashInfo }) {
     return (
       <div className="crash-fixes">
         <button className="btn md secondary" data-track="crash_ai" disabled={state.step === 'asking'} onClick={() => void ask()}>
-          <Milli size={20} mode={state.step === 'asking' ? 'think' : 'idle'} /> {state.step === 'asking' ? 'Милли читает лог…' : 'Спросить ИИ'}
+          <Milli size={20} mode={state.step === 'asking' ? 'think' : 'idle'} /> {state.step === 'asking' ? 'ИИ читает лог…' : 'Спросить ИИ'}
         </button>
       </div>
     )
@@ -281,7 +281,7 @@ function CrashAi({ info }: { info: CrashInfo }) {
   return (
     <>
       <div className="crash-plan" aria-live="polite">
-        <span>Милли: {state.explain}</span>
+        <span>ИИ-помощник: {state.explain}</span>
         {state.steps.length ? (
           <ul>
             {state.steps.map((s) => (

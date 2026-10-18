@@ -210,7 +210,7 @@ export function packRepairText(r: Pick<PackRepair, 'done' | 'failed' | 'unresolv
   const head = r.done.length ? 'Готово: ' + r.done.join('; ') + '. Запусти игру' : ''
   const fail = r.failed.length ? 'Не вышло: ' + r.failed.join('; ') : ''
   if (head || fail) return [head, fail].filter(Boolean).join('. ')
-  if (r.unresolved) return 'Файлы в порядке, а причину вылета автоматом не убрать — Милли разберёт лог'
+  if (r.unresolved) return 'Файлы в порядке, а причину вылета автоматом не убрать — разбери лог вручную'
   return r.filesText || 'Всё на месте: файлы игры сверены по хешам'
 }
 
