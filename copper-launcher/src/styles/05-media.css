@@ -869,17 +869,6 @@
 .crash-acts-min{display:flex;gap:10px;margin-top:2px}
 .crash-acts-min .btn{flex:1}
 
-/* Boot-time update screen, shown before the launcher UI. */
-.boot-upd{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;background:var(--m-bg)}
-.boot-upd-card{display:flex;flex-direction:column;align-items:center;gap:10px;width:280px;text-align:center}
-.boot-upd-title{font-size:15px;font-weight:700;color:var(--m-fg);margin-top:6px}
-.boot-upd-sub{font-size:12.5px;color:var(--m-fg-muted)}
-.boot-upd-bar{width:100%;height:6px;border-radius:var(--m-r-pill);background:var(--m-inset);overflow:hidden;margin-top:6px}
-.boot-upd-fill{display:block;height:100%;width:0;border-radius:var(--m-r-pill);background:var(--m-accent);transition:width .2s ease}
-.boot-upd-fill.pulse{width:40%;animation:bootUpdSlide 1.1s ease-in-out infinite}
-@keyframes bootUpdSlide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
-@media (prefers-reduced-motion: reduce){.boot-upd-fill.pulse{animation:none;width:100%}}
-.boot-upd-note{font-size:11.5px;color:var(--m-fg-faint)}
 
 /* In-game overlay: its own window, so the page itself must stay transparent
    and must not scroll — anything opaque here paints over Minecraft. */

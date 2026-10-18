@@ -28,7 +28,7 @@ import { apiErrorText } from '../lib/apiError'
 import { autostartOn,setAutostart } from '../lib/autostart'
 import { discordPresence } from '../lib/launch'
 import { writePref } from '../lib/prefs'
-import { betaChannel,checkForUpdate,pendingUpdate } from '../lib/updater'
+import { applyUpdate,betaChannel,checkForUpdate } from '../lib/updater'
 import { useAccounts } from '../state/accounts'
 import { uiConfirm } from '../state/confirm'
 import { useLayout,type Layout } from '../state/layout'
@@ -194,10 +194,11 @@ export function Settings({ on }: { on: boolean }) {
   const [majors, setMajors] = useState<number[]>([8, 11, 17, 21])
   const [javaWant, setJavaWant] = useState(21)
   const [javaBusy, setJavaBusy] = useState(0)
-  const [upd, setUpd] = useState(pendingUpdate)
+  const updVersion = useUpdate((s) => s.version)
+  const updApplying = useUpdate((s) => s.busy)
+  const updPct = useUpdate((s) => s.pct)
   const [updBusy, setUpdBusy] = useState(false)
   const [beta, setBeta] = useState(betaChannel)
-  const updStaged = useUpdate((s) => s.staged)
   const tabMs = useViewPrefs((s) => s.tabMs)
   const perf = useViewPrefs((s) => s.perf)
   const layout = useLayout((s) => s.layout)
@@ -637,29 +638,18 @@ export function Settings({ on }: { on: boolean }) {
           <span className="s2-hero-txt">
             <b>Copper Launcher</b>
             <small>
-              {upd
-                ? updStaged
-                  ? 'Обновление ' + upd.version + ' встанет при выходе'
-                  : 'Доступна ' + upd.version
+              {updVersion
+                ? updApplying
+                  ? 'Качаем ' + updVersion + (updPct ? ' · ' + updPct + '%' : '') + '…'
+                  : 'Доступна ' + updVersion + (ver ? ' · сейчас ' + ver : '')
                 : ver
                   ? 'Версия ' + ver
                   : 'Версия приложения'}
             </small>
           </span>
-          {upd ? (
-            <button
-              className="btn md primary"
-              disabled={updBusy}
-              onClick={() => {
-                setUpdBusy(true)
-                upd.install().catch((e) => {
-                  console.error('[settings] update', e)
-                  setUpdBusy(false)
-                  showToast('Не удалось обновиться', 'error')
-                })
-              }}
-            >
-              <Icon id="i-restart" /> {updBusy ? 'Обновляем…' : 'Обновить'}
+          {updVersion ? (
+            <button className="btn md primary" disabled={updApplying} onClick={() => void applyUpdate()}>
+              <Icon id="i-restart" /> {updApplying ? 'Обновляем…' : 'Обновить'}
             </button>
           ) : (
             <button
@@ -667,12 +657,7 @@ export function Settings({ on }: { on: boolean }) {
               disabled={updBusy}
               onClick={() => {
                 setUpdBusy(true)
-                void checkForUpdate(true)
-                  .then((u) => {
-                    setUpd(u)
-                    if (!u) showToast('Стоит последняя версия')
-                  })
-                  .finally(() => setUpdBusy(false))
+                void checkForUpdate(true).finally(() => setUpdBusy(false))
               }}
             >
               {updBusy ? <span className="spin"></span> : <Icon id="i-restart" />} Проверить
@@ -686,7 +671,7 @@ export function Settings({ on }: { on: boolean }) {
         <Row title="Собран на GitHub" hint={ver ? 'v' + ver : undefined} keys="github исходный код открытый безопасность вирус проверить сборка">
           <button
             className="btn md secondary"
-            onClick={() => void openUrl('https://github.com/copper/launcher/releases' + (ver ? '/tag/v' + ver : '')).catch(() => {})}
+            onClick={() => void openUrl('https://github.com/CRIILET1221/CopperLauncher/releases' + (ver ? '/tag/v' + ver : '')).catch(() => {})}
           >
             Открыть
           </button>
@@ -699,6 +684,7 @@ export function Settings({ on }: { on: boolean }) {
               const next = !beta
               setBeta(next)
               writePref('m-beta', next ? '1' : '0')
+              void checkForUpdate()
             }}
           />
         </Row>

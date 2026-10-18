@@ -707,7 +707,6 @@ dependencies = [
  "lewton",
  "libc",
  "md-5",
- "minisign-verify",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -2650,12 +2649,6 @@ dependencies = [
  "mime",
  "unicase",
 ]
-
-[[package]]
-name = "minisign-verify"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22f9645cb765ea72b8111f36c522475d2daa0d22c957a9826437e97534bc4e9e"
 
 [[package]]
 name = "miniz_oxide"

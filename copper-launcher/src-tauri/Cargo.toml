@@ -57,9 +57,6 @@ discord-rich-presence = "0.2"
 # secrets live in the local vault (secrets.rs): AES-256-GCM with an HKDF key
 aes-gcm = "0.10"
 hkdf = "0.12"
-# the fallback updater verifies artifacts with the same key and algorithm as the
-# updater plugin
-minisign-verify = "0.2"
 semver = "1"
 base64 = "0.22"
 url = "2"

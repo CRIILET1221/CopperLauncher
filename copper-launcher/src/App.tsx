@@ -9,7 +9,6 @@ import { useLayout } from './state/layout'
 import type { ScreenId } from './state/ui'
 // Screens are mounted only while open, and their chunks are prewarmed after boot
 // so switching tabs stays instant.
-import { BootUpdate } from './components/BootUpdate'
 import { BuildPicker } from './components/BuildPicker'
 import { ConfirmModal } from './components/ConfirmModal'
 import { CrashModal } from './components/CrashModal'
@@ -59,7 +58,7 @@ import { initSecrets } from './lib/secure'
 import { enterApp,logoutToLogin } from './lib/session'
 import { useSlidingSegs } from './lib/slidingSegs'
 import { playSound } from './lib/sound'
-import { autoUpdate,bootUpdate,installUpdateOnExit,updateReady } from './lib/updater'
+import { checkForUpdate } from './lib/updater'
 import { reportWebviewFailure,setLauncherIdleMemory } from './lib/webviewHealth'
 import { hideLauncherToTray,initTray,restoreLauncher,restoreOnGameExit,trayCloseEnabled } from './lib/window'
 import { AccountAddModal } from './modals/AccountAdd'
@@ -94,6 +93,7 @@ import { syncRunningGame,useGame } from './state/game'
 import { refreshGameNick } from './state/gameNick'
 import { initInstalls } from './state/installs'
 import { useMods } from './state/mods'
+import { useUpdate } from './state/update'
 import { refreshMsAccounts } from './state/msLogin'
 import { notifyAudible,notifyShown } from './state/notifyPrefs'
 import { refreshPlayStats,rememberServerName,serverNameFor,watchPlaytimeWhileRunning } from './state/playStats'
@@ -284,12 +284,11 @@ export function App() {
     const stopStreakReminder = () => {}
     const stopStreakActivity = () => {}
     const stopPromoServers = () => {}
-    void bootUpdate().then((leaving) => {
-      if (leaving) return
-      preloadScreens()
-    })
+    preloadScreens()
+    // Обновление лаунчера: проверка GitHub Releases при запуске и раз в полчаса.
+    void checkForUpdate()
     const updPoll = setInterval(() => {
-      if (!updateReady()) void autoUpdate()
+      if (!useUpdate.getState().busy) void checkForUpdate()
     }, 1_800_000)
     // The launcher can sit in the tray longer than an MC token lives, so refresh
     // near-expiry accounts periodically.
@@ -347,16 +346,8 @@ export function App() {
     const w = hasTauri() && T && T.window ? T.window.getCurrentWindow() : null
     if (!w || !w.onCloseRequested) return
     let unlisten: UnlistenFn | null = null
-    let leaving = false
     void w
       .onCloseRequested(async (e) => {
-        if (leaving) return
-        if (updateReady()) {
-          leaving = true
-          e.preventDefault()
-          await installUpdateOnExit()
-          return
-        }
         if (!trayCloseEnabled()) return
         e.preventDefault()
         hideLauncherToTray()
@@ -376,7 +367,6 @@ export function App() {
     void listenTrayExit(() => {
       ;
       void flushPrefs()
-      if (updateReady()) void installUpdateOnExit()
     }).then((u) => {
       unlisten = u
     })
@@ -716,7 +706,6 @@ export function App() {
   return (
     <>
       <SvgSprite />
-      <BootUpdate />
 
       <div className="window" id="win">
         <Titlebar />

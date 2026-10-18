@@ -1,25 +1,25 @@
 import { create } from 'zustand'
 
-export type BootPhase = 'idle' | 'checking' | 'downloading' | 'installing'
-
 interface UpdateState {
+  /** Версия, которая вышла на GitHub; null — обновления нет. */
   version: string | null
-  staged: boolean
+  notes: string
+  /** Страница релиза для ручной установки. */
+  page: string
   busy: boolean
-  manual: boolean
-  failed: boolean
-  bootPhase: BootPhase
-  bootPct: number
+  /** Ход скачивания установщика, 0..100; null — не качаем. */
+  pct: number | null
+  /** «Позже»: плашка скрыта до следующего запуска. */
+  hidden: boolean
   set: (p: Partial<UpdateState>) => void
 }
 
 export const useUpdate = create<UpdateState>((set) => ({
   version: null,
-  staged: false,
+  notes: '',
+  page: '',
   busy: false,
-  manual: false,
-  failed: false,
-  bootPhase: 'idle',
-  bootPct: 0,
+  pct: null,
+  hidden: false,
   set: (p) => set(p),
 }))

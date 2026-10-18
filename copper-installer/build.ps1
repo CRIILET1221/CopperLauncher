@@ -50,4 +50,8 @@ $outputs=Join-Path (Split-Path $project) 'outputs'
 New-Item -ItemType Directory -Force -Path $outputs | Out-Null
 $setup=Join-Path $outputs 'Copper-Setup.exe'
 Copy-Item -LiteralPath "$project/src-tauri/target/release/copper-setup.exe" -Destination $setup -Force
+# Контрольная сумма для автообновления: SHA256SUMS выкладывается в релиз GitHub рядом с Copper-Setup.exe.
+$hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
+Set-Content -LiteralPath (Join-Path $outputs 'SHA256SUMS') -Value "$hash  Copper-Setup.exe" -Encoding ascii
 Write-Host "Готово: $setup"
+Write-Host "SHA256: $hash (записано в outputs/SHA256SUMS)"

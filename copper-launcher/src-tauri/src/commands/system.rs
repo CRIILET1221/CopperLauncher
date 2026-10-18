@@ -178,39 +178,27 @@ pub fn is_flatpak() -> bool {
     engine::is_flatpak()
 }
 
-/// Fallback update path over the same signed latest.json, used when the updater
-/// plugin can neither check nor install.
+/// Обновление лаунчера через GitHub Releases (engine::selfupdate).
 #[tauri::command]
-pub async fn update_fallback_check(app: tauri::AppHandle) -> Result<Option<engine::FallbackUpdate>, String> {
-    engine::fallback_check(&app).await
+pub async fn update_check(beta: Option<bool>) -> Result<Option<engine::LauncherUpdate>, String> {
+    engine::update_check(beta.unwrap_or(false)).await
 }
 
+/// Скачивает и проверяет установщик; путь наружу только для показа.
 #[tauri::command]
-pub async fn update_fallback_stage(app: tauri::AppHandle) -> Result<Option<engine::FallbackInstall>, String> {
-    engine::fallback_stage_latest(&app).await
+pub async fn update_stage(app: tauri::AppHandle, beta: Option<bool>) -> Result<engine::StagedUpdate, String> {
+    engine::update_stage(&app, beta.unwrap_or(false)).await
 }
 
-/// Notes of whatever the manifest currently publishes, newer than the running
-/// build or not: the "what's new" window shows the changelog of the version
-/// already installed, which the update check itself never returns.
+/// Запускает только установщик, проверенный в update_stage.
 #[tauri::command]
-pub async fn update_notes(app: tauri::AppHandle) -> Result<Option<engine::FallbackUpdate>, String> {
-    engine::fallback_latest(&app).await
+pub fn update_run() -> Result<engine::StagedUpdate, String> {
+    engine::update_run()
 }
 
-#[tauri::command]
-pub fn update_fallback_run(
-    app: tauri::AppHandle,
-    path: String,
-    restart: Option<bool>,
-) -> Result<engine::FallbackInstall, String> {
-    engine::fallback_run(&app, &path, restart.unwrap_or(true))
-}
-
-/// Liveness ping from the webview; without it the self-heal path kicks in.
+/// Shows the main window once the webview has drawn its first frame.
 #[tauri::command]
 pub fn frontend_ready(window: tauri::WebviewWindow) {
-    engine::mark_frontend_ready();
     if window.label() == "main" && !(started_by_os() && crate::tray::available()) {
         let _ = window.show();
         let _ = window.set_focus();

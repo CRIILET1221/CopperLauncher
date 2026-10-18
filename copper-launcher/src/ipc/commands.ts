@@ -1035,33 +1035,29 @@ export const setWebviewLowMemory = (on: boolean) => invoke<void>('set_webview_lo
 export const isFlatpak = () => invoke<boolean>('is_flatpak')
 
 
-// Fallback update path over the same signed manifest, used when the updater
-// plugin can neither check nor install.
-export interface FallbackUpdate {
+// Обновление лаунчера через GitHub Releases (ядро: engine/core/selfupdate.rs).
+export interface LauncherUpdate {
   version: string
   notes: string
+  /** Страница релиза на GitHub — для ручной установки. */
+  page: string
   url: string
-  file: string
-  signature: string
-  source: string
-  /** CDN-зеркало тех же байтов, когда url ведёт в релиз на GitHub. */
-  mirror?: string
+  size: number
+  sha256: string
 }
 
-export interface FallbackInstall {
+export interface StagedUpdate {
   version: string
   path: string
-  started: boolean
 }
 
-export const updateFallbackCheck = () => invoke<FallbackUpdate | null>('update_fallback_check')
+export const updateCheck = (beta: boolean) => invoke<LauncherUpdate | null>('update_check', { beta })
 
-export const updateNotes = () => invoke<FallbackUpdate | null>('update_notes')
+/** Качает Copper-Setup.exe и сверяет sha256; ход — событием launcher-update-progress. */
+export const updateStage = (beta: boolean) => invoke<StagedUpdate>('update_stage', { beta })
 
-export const updateFallbackStage = () => invoke<FallbackInstall | null>('update_fallback_stage')
-
-export const updateFallbackRun = (path: string, restart = true) =>
-  invoke<FallbackInstall>('update_fallback_run', { path, restart })
+/** Запускает проверенный установщик; после этого лаунчер закрывается. */
+export const updateRun = () => invoke<StagedUpdate>('update_run')
 
 
 export const uiPrefs = () => invoke<Record<string, string>>('ui_prefs')

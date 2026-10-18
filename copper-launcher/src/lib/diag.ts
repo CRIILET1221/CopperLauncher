@@ -13,7 +13,7 @@ import type { CrashEntry, DeviceSpecs, JavaRuntime, Profile, SkinDiag } from '..
 import { hasTauri } from '../ipc/tauri'
 import { detectGpu } from './gpu'
 import { recentIssues } from './crash'
-import { pendingUpdate, updateReady } from './updater'
+import { pendingUpdate } from './updater'
 import { soundMode, soundVolume } from './sound'
 import { skinSource } from './gameProfile'
 import { hasTray, launchWindowMode, restoreOnGameExit, trayCloseEnabled } from './window'
@@ -123,7 +123,7 @@ export async function buildDiagnostics(): Promise<string> {
     '=== Copper Launcher · диагностика ===',
     'Снято: ' + new Date().toISOString(),
     'Версия: ' + (ver || 'неизвестна') + (tauri ? '' : ' (веб-режим, без ядра)'),
-    upd ? 'Обновление: доступна ' + upd.version + (updateReady() ? ' (готова к установке)' : ' (качается)') : 'Обновление: нет',
+    upd ? 'Обновление: доступна ' + upd.version : 'Обновление: нет',
     flatpak ? 'Упаковка: flatpak' : null,
     '',
     '--- Система ---',
