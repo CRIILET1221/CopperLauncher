@@ -1,5 +1,5 @@
 import { coverGradient, shade } from './blockColor'
-import { BLOCK_ICONS, normalizeBundledIcon } from './icons'
+import { INSTANCE_ICONS, normalizeBundledIcon } from './icons'
 
 /// Composed icons are stored as the same 128px PNG data URL a picked cover is,
 /// so every place that already renders `profile.icon` keeps working unchanged.
@@ -27,7 +27,7 @@ export const ICON_BACKGROUNDS: string[] = [
   '#2b3138',
 ]
 
-export const ICON_SYMBOLS: string[] = BLOCK_ICONS
+export const ICON_SYMBOLS: string[] = INSTANCE_ICONS
 
 export interface IconRecipe {
   bg: string

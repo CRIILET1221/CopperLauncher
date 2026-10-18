@@ -12,9 +12,9 @@ import { normalizeBundledIcon } from './icons'
  */
 
 /** Книжная полка из набора блоков Copper (правка владельца 23.09.2026, 20:00). */
-export const DEFAULT_BLOCK = '/block-icons/Block52Copper.svg'
+export const DEFAULT_BLOCK = '/build-icons/mr/bookshelf.png'
 /** Свой рендер травы 240 px — в наборе для выбора. */
-export const GRASS_BLOCK = '/block-icons/Block3Copper.svg'
+export const GRASS_BLOCK = '/build-icons/mr/grass-block.png'
 
 /** Глубокие плотные цвета подложки. Первый — тёмное дерево под книжную полку. */
 export const ICON_BGS: string[] = [

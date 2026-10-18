@@ -46,9 +46,9 @@ test('палитра фонов: только #rrggbb, без повторов',
   expect(new Set(ICON_BACKGROUNDS).size, 'в палитре есть повторяющийся цвет').toBe(ICON_BACKGROUNDS.length)
 })
 
-test('символы берутся из набора блоков и лежат в /block-icons', () => {
+test('символы берутся из восстановленного набора иконок', () => {
   expect(ICON_SYMBOLS.length).toBeGreaterThan(10)
-  for (const s of ICON_SYMBOLS) expect(s.startsWith('/block-icons/'), 'символ вне набора: ' + s).toBe(true)
+  for (const s of ICON_SYMBOLS) expect(s.startsWith('/build-icons/mr/'), 'символ вне набора: ' + s).toBe(true)
 })
 
 test('иконка по умолчанию собрана из палитры и набора символов', () => {

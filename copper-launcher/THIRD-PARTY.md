@@ -15,10 +15,10 @@ The bundled fonts retain SIL Open Font License 1.1. Their copyright notices and 
 ## Graphics
 
 - The original Millida background images/videos and its 54 block PNGs have been removed.
-- Other legacy promotional/game/version imagery and the copied instance-icon image pack have been removed from this distribution.
+- Legacy promotional/game/version imagery remains removed. The instance-icon image pack from Modrinth App has been restored for the instance picker; its preserved attribution and GPL-3.0-only notice are in `copper-launcher/public/build-icons/mr/NOTICE`.
 - New public/bg/*.svg and public/block-icons/*.svg are original geometric Copper artwork under GPL-3.0-only. The editable generator is scripts/generate-copper-art.mjs. No original Minecraft textures were used to generate these vectors.
 - The user-supplied Copper cube and the new vector C monogram app icon are kept as separate project artwork. This statement does not grant rights to any third-party work they might reproduce; Minecraft brand/asset rules still apply where relevant.
-- Bundled category/loader image files now use original Copper glyphs. Provider and loader names remain descriptive text; their respective owners retain rights to their names and marks. References do not indicate endorsement.
+- Original loader logos have been restored in `public/loaders/`. Their respective owners retain rights to their names and marks; their use identifies the supported loaders and does not indicate endorsement. Category symbols continue to use Copper glyphs.
 
 ## Minecraft and downloaded content
 

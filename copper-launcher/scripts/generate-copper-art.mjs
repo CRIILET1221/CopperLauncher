@@ -164,6 +164,6 @@ const aliases={
   "mr-icons/loaders/velocity.svg": 6,
   "mr-icons/loaders/waterfall.svg": 7
 }
-for(const [name,index] of Object.entries(aliases)){fs.mkdirSync(path.dirname(path.join(root,name)),{recursive:true});fs.copyFileSync(path.join(root,"block-icons",`Block${index}Copper.svg`),path.join(root,name))}
+for(const [name,index] of Object.entries(aliases)){if(name.includes("loaders/"))continue;fs.mkdirSync(path.dirname(path.join(root,name)),{recursive:true});fs.copyFileSync(path.join(root,"block-icons",`Block${index}Copper.svg`),path.join(root,name))}
 
-for(const [i,name] of fs.readdirSync(path.join(root,"loaders")).filter(n=>n.endsWith(".svg")).entries()){fs.copyFileSync(path.join(root,"block-icons",`Block${i%8+1}Copper.svg`),path.join(root,"loaders",name))}
+// Loader logos are preserved from the restored asset set.
