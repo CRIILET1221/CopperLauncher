@@ -96,7 +96,8 @@ fn digest_sha(asset: &Value) -> Option<String> {
 pub(crate) fn agree(found: &[String]) -> Result<String, String> {
     let first = found.first().ok_or("в релизе нет контрольной суммы установщика (SHA256SUMS)")?;
     if found.iter().any(|h| h != first) {
-        return Err("контрольные суммы установщика в релизе не совпадают".into());
+        // Обычно это значит, что файлы релиза как раз перезаливают: SHA256SUMS ещё старый.
+        return Err("контрольные суммы установщика в релизе не совпадают — возможно, релиз сейчас обновляют, попробуй через несколько минут".into());
     }
     Ok(first.clone())
 }
