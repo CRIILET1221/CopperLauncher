@@ -29,7 +29,7 @@ Microsoft Edge WebView2 Runtime is required. The executable is currently unsigne
 
 **Development status:** this is an early fork. Full installation/uninstallation and game-launch testing are still in progress. Microsoft skin changes need further verification in-game. Removing the original telemetry integration does not amount to a security audit of every dependency.
 
-## Build from source
+## Build from source.
 
 ### Requirements
 
