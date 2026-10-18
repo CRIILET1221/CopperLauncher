@@ -87,7 +87,7 @@ async function quit(): Promise<void> {
   }
 }
 
-/// «Обновить»: скачать установщик, проверить, запустить и закрыть лаунчер.
+/// «Обновить»: скачать установщик, проверить, запустить без окна и закрыть лаунчер.
 export async function applyUpdate(): Promise<void> {
   const st = useUpdate.getState()
   if (st.busy || !st.version) return
@@ -110,6 +110,8 @@ export async function applyUpdate(): Promise<void> {
     await updateStage(betaChannel())
     useUpdate.getState().set({ pct: 100 })
     await updateRun()
+    // Установщик ждёт, пока лаунчер закроется, заменяет файлы и сам открывает новую версию.
+    await new Promise((r) => setTimeout(r, 800))
     await quit()
   } catch (e) {
     updateFailed(e)

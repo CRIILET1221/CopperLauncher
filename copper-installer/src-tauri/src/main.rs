@@ -147,10 +147,164 @@ fn launch(path:String)->Result<(),String>{
 }
 #[tauri::command]
 fn startup_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+    // Тихое обновление идёт без окна; окно покажется, только если оно не удалось.
+    if SILENT.load(Ordering::SeqCst) { return Ok(()) }
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_focus();
     Ok(())
 }
-fn main(){tauri::Builder::default().invoke_handler(tauri::generate_handler![startup_ready,default_path,choose_folder,close_setup,install,launch])
+
+// ---------- Обновление поверх установленной копии ----------
+// Путь берётся только из записи Copper в реестре, не из интерфейса. Файлы
+// пакета заменяются по одному с запасной копией *.old; при любой ошибке всё
+// возвращается как было. Ярлыки, shortcuts.json и данные игр не трогаются.
+
+const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CopperLauncher";
+/// Версия лаунчера в пакете; build.ps1 передаёт её из Cargo.toml лаунчера.
+const LAUNCHER_VERSION: &str = match option_env!("COPPER_LAUNCHER_VERSION") { Some(v) => v, None => env!("CARGO_PKG_VERSION") };
+
+#[derive(serde::Serialize, Clone)]
+struct Existing { path: String, version: String }
+#[derive(serde::Serialize)]
+struct SetupMode { existing: Option<Existing>, auto_update: bool, version: String, error: Option<String> }
+
+/// --silent-update: лаунчер обновляется без окна установщика, затем сам запускается.
+static SILENT: AtomicBool = AtomicBool::new(false);
+static SILENT_ERROR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn has_arg(flag: &str) -> bool { std::env::args().skip(1).any(|a| a.eq_ignore_ascii_case(flag)) }
+
+fn start_silent_update(app: &tauri::AppHandle) {
+    SILENT.store(true, Ordering::SeqCst);
+    BUSY.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let result = update_inner(&app).and_then(|path| launch(path).map(|_| ()));
+        BUSY.store(false, Ordering::SeqCst);
+        match result {
+            Ok(()) => app.exit(0),
+            Err(e) => {
+                *SILENT_ERROR.lock().unwrap_or_else(|p| p.into_inner()) = Some(e.clone());
+                SILENT.store(false, Ordering::SeqCst);
+                let _ = app.emit("update-failed", e);
+                if let Some(w) = tauri::Manager::get_webview_window(&app, "main") { let _ = w.show(); let _ = w.set_focus(); }
+            }
+        }
+    });
+}
+
+fn existing_install() -> Option<Existing> {
+    let key = windows_registry::CURRENT_USER.open(UNINSTALL_KEY).ok()?;
+    let raw = key.get_string("InstallLocation").ok()?;
+    let path = PathBuf::from(raw.trim());
+    let ok = path.is_absolute() && !path.to_string_lossy().starts_with("\\\\")
+        && path.join("Copper.exe").is_file() && path.join("installed-files.json").is_file();
+    ok.then(|| Existing { path: path.to_string_lossy().into(), version: key.get_string("DisplayVersion").unwrap_or_default() })
+}
+
+/// Лаунчер запускает установщик с --update: тогда обновление идёт само.
+#[tauri::command]
+fn setup_mode() -> SetupMode {
+    let existing = existing_install();
+    let error = SILENT_ERROR.lock().unwrap_or_else(|p| p.into_inner()).clone();
+    let auto_update = existing.is_some() && error.is_none() && has_arg("--update");
+    SetupMode { existing, auto_update, version: LAUNCHER_VERSION.into(), error }
+}
+
+/// Запущенный exe Windows не даёт открыть на запись — ждём, пока лаунчер закроется.
+fn wait_unlocked(app: &tauri::AppHandle, exe: &Path) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    loop {
+        match fs::OpenOptions::new().write(true).open(exe) {
+            Ok(_) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(_) if start.elapsed() < std::time::Duration::from_secs(60) => {
+                progress(app, 3, "Ждём, пока закроется Copper Launcher…");
+                std::thread::sleep(std::time::Duration::from_millis(400));
+            }
+            Err(_) => return Err("Copper Launcher всё ещё открыт. Закрой его (и в трее) и нажми «Обновить» ещё раз.".into()),
+        }
+    }
+}
+
+fn side(path: &Path, ext: &str) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(ext);
+    path.with_file_name(name)
+}
+
+fn update_inner(app: &tauri::AppHandle) -> Result<String, String> {
+    let existing = existing_install().ok_or("Установленный Copper не найден. Выбери папку для новой установки.")?;
+    let root = PathBuf::from(&existing.path);
+    progress(app, 2, "Проверка установленной версии…");
+    wait_unlocked(app, &root.join("Copper.exe"))?;
+    let lock_path = root.join(".copper-install.lock");
+    let _ = fs::remove_file(&lock_path);
+    let lock = fs::OpenOptions::new().write(true).create_new(true).open(&lock_path).map_err(|e| format!("Папка занята другой установкой: {e}"))?;
+    // (новый файл, заменённый файл или None, если раньше файла не было)
+    let mut done: Vec<(PathBuf, Option<PathBuf>)> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let result = (|| -> Result<(), String> {
+        let mut archive = zip::ZipArchive::new(Cursor::new(PAYLOAD)).map_err(|e| e.to_string())?;
+        let count = archive.len();
+        for i in 0..count {
+            let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+            let name = entry.enclosed_name().ok_or("Некорректный путь в пакете")?;
+            if name.components().count() != 1 || entry.is_dir() { return Err("В пакете допускаются только файлы верхнего уровня".into()); }
+            names.push(name.to_string_lossy().into());
+            let out = root.join(&name);
+            let fresh = side(&out, ".new");
+            {
+                let mut file = fs::File::create(&fresh).map_err(|e| format!("{}: {e}", fresh.display()))?;
+                std::io::copy(&mut entry, &mut file).map_err(|e| e.to_string())?;
+                file.flush().map_err(|e| e.to_string())?;
+            }
+            let backup = if out.exists() {
+                let old = side(&out, ".old");
+                let _ = fs::remove_file(&old);
+                fs::rename(&out, &old).map_err(|e| format!("Не удалось заменить {}: {e}", out.display()))?;
+                Some(old)
+            } else { None };
+            done.push((out.clone(), backup));
+            fs::rename(&fresh, &out).map_err(|e| format!("Не удалось записать {}: {e}", out.display()))?;
+            progress(app, (10 + 75 * (i + 1) / count.max(1)) as u8, "Замена файлов Copper Launcher…");
+        }
+        if !root.join("Copper.exe").is_file() { return Err("В пакете отсутствует Copper.exe".into()); }
+        let manifest = root.join("installed-files.json");
+        let mut listed: Vec<String> = fs::read(&manifest).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        for n in &names { if !listed.iter().any(|x| x.eq_ignore_ascii_case(n)) { listed.push(n.clone()); } }
+        fs::write(&manifest, serde_json::to_vec(&listed).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        progress(app, 92, "Обновление записи в Windows…");
+        let key = windows_registry::CURRENT_USER.create(UNINSTALL_KEY).map_err(|e| e.to_string())?;
+        key.set_string("DisplayVersion", LAUNCHER_VERSION).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    match &result {
+        Ok(()) => { for (_, old) in &done { if let Some(old) = old { let _ = fs::remove_file(old); } } }
+        Err(_) => {
+            for (out, old) in done.iter().rev() {
+                let _ = fs::remove_file(out);
+                if let Some(old) = old { let _ = fs::rename(old, out); }
+            }
+            for n in &names { let _ = fs::remove_file(side(&root.join(n), ".new")); }
+        }
+    }
+    drop(lock);
+    let _ = fs::remove_file(&lock_path);
+    result?;
+    progress(app, 100, "Copper обновлён");
+    Ok(existing.path)
+}
+
+#[tauri::command]
+async fn update(app: tauri::AppHandle) -> Result<String, String> {
+    if BUSY.swap(true, Ordering::SeqCst) { return Err("Установка уже выполняется".into()) }
+    let result = tauri::async_runtime::spawn_blocking(move || update_inner(&app)).await.map_err(|e| e.to_string()).and_then(|r| r);
+    BUSY.store(false, Ordering::SeqCst);
+    result
+}
+
+fn main(){tauri::Builder::default().invoke_handler(tauri::generate_handler![startup_ready,default_path,choose_folder,close_setup,install,launch,setup_mode,update])
     .on_window_event(|_,event|{if let tauri::WindowEvent::CloseRequested{api,..}=event {if BUSY.load(Ordering::SeqCst){api.prevent_close();}}})
+    .setup(|app|{if has_arg("--silent-update") && existing_install().is_some(){start_silent_update(app.handle());}Ok(())})
     .run(tauri::generate_context!()).expect("Copper Setup could not start");}

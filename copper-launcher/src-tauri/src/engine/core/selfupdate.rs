@@ -12,6 +12,9 @@
 //! Без хеша или при расхождении обновление не ставится. Это защита от битой или
 //! подменённой по дороге загрузки; подпись автора (minisign/Authenticode) —
 //! отдельный шаг, пока сборки не подписаны.
+//!
+//! Установка — без окна: Copper-Setup.exe --silent-update обновляет файлы в
+//! папке установленной копии (путь из записи в реестре) и перезапускает лаунчер.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -229,7 +232,7 @@ pub async fn update_stage(app: &AppHandle, beta: bool) -> Result<StagedUpdate, S
 }
 
 /// Перед запуском хеш сверяется ещё раз: файл лежит в папке пользователя.
-/// Лаунчер после этого закрывает интерфейс.
+/// Лаунчер после этого сразу закрывается, чтобы установщик мог заменить Copper.exe.
 pub fn update_run() -> Result<StagedUpdate, String> {
     let (path, sha, version) = STAGED
         .lock()
@@ -241,7 +244,11 @@ pub fn update_run() -> Result<StagedUpdate, String> {
         let _ = std::fs::remove_file(&path);
         return Err("установщик изменился после проверки — скачай обновление заново".into());
     }
+    // --silent-update: установщик без окна ждёт выхода лаунчера, заменяет файлы
+    // в той же папке и сам запускает новую версию. Окно он покажет, только если
+    // обновить не вышло.
     std::process::Command::new(&path)
+        .arg("--silent-update")
         .current_dir(updates_dir())
         .spawn()
         .map_err(|e| format!("установщик не запустился: {}", e))?;

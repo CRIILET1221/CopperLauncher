@@ -44,6 +44,8 @@ try {
   [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Join-Path $launcher 'public/fonts/OFL.txt'),'OFL.txt') | Out-Null
 } finally {$z.Dispose()}
 if($PrepareOnly){Write-Host 'Пакет и ресурсы подготовлены.';exit}
+# Версия лаунчера в пакете: установщик пишет её в «Приложения» и показывает при обновлении.
+$env:COPPER_LAUNCHER_VERSION=([regex]::Match((Get-Content -LiteralPath "$launcher/src-tauri/Cargo.toml" -Raw),'(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
 Push-Location $project
 try { & node $cli build --no-bundle; if($LASTEXITCODE -ne 0){throw 'Сборка установщика завершилась ошибкой.'} } finally {Pop-Location}
 $outputs=Join-Path (Split-Path $project) 'outputs'

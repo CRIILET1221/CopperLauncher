@@ -12,7 +12,7 @@ This builds Copper, the separate native uninstaller, then the installer. Output:
 To package an already compiled launcher, use `-UseExistingLauncher`.
 `-PrepareOnly` builds the uninstaller and prepares resources/payload, using an existing compiled launcher.
 
-Features: folder picker, per-user desktop/Start menu shortcuts, real extraction progress, launch after installation, Windows Apps uninstall registration. The destination must be empty; upgrades currently require uninstalling the old application first. Game data in `io.copper.launcher` is preserved by uninstall. No telemetry or network downloads in the installer.
+Features: folder picker, per-user desktop/Start menu shortcuts, real extraction progress, launch after installation, Windows Apps uninstall registration. A new installation needs an empty folder. If Copper is already installed (found through its Windows Apps entry), Setup offers "Обновить" instead: it waits for the launcher to close, replaces the packaged files in the same folder (each with a .old backup, rolled back on any error), keeps shortcuts and updates the version in Windows Apps. `--update` starts that right away; `--silent-update` does it without a window and then starts the new launcher — this is how the launcher updates itself from GitHub Releases. The window only appears if the silent update fails. Game data in `io.copper.launcher` is preserved by uninstall. No telemetry or network downloads in the installer.
 
 Uninstall uses the separate Copper Uninstall EXE with a matching custom interface. New installations contain no uninstall.ps1. See ../copper-uninstaller/README.md for the command to replace an existing broken uninstaller. The binary is unsigned. The preview HTML in the launcher remains a separate simulation.
 

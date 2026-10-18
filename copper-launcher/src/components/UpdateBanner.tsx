@@ -11,7 +11,7 @@ export function UpdateBanner() {
 
   const label = busy
     ? pct !== null && pct >= 100
-      ? 'Запускаем установщик ' + version + '…'
+      ? 'Ставим ' + version + ' — лаунчер перезапустится'
       : 'Качаем обновление ' + version + (pct ? ' · ' + pct + '%' : '')
     : 'Вышла версия ' + version
 
