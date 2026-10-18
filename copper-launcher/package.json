@@ -1,7 +1,7 @@
 {
   "name": "copper-launcher",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.2",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:release": "tauri build --config src-tauri/tauri.release.conf.json",
+    "set-version": "bun scripts/set-version.mjs",
     "build:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File ../copper-installer/build.ps1",
     "build:uninstaller": "powershell -NoProfile -ExecutionPolicy Bypass -File ../copper-uninstaller/build.ps1",
     "build:fast": "bun scripts/build.mjs fast",
