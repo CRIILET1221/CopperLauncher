@@ -1,6 +1,6 @@
 [package]
 name = "copper-launcher"
-version = "2.0.2"
+version = "2.0.3"
 description = "Copper Launcher — безопасный лаунчер Minecraft"
 authors = ["Copper"]
 edition = "2021"
