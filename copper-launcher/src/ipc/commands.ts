@@ -409,6 +409,10 @@ export const cfSearch = (
   sort = 0,
 ) => invoke<CfHit[]>('cf_search', { query, kind, gameVersion, loader, index, category, sort })
 
+/** Сырой ответ CurseForge для каталога: поиск (v1/mods/search) и категории (v1/categories). */
+export const cfBrowse = (path: string, query: [string, string][]) =>
+  invoke<unknown>('cf_browse', { path, query })
+
 export const checkUpdates = (profile: string, kind: string) =>
   invoke<UpdateInfo[]>('check_updates', { profile, kind })
 

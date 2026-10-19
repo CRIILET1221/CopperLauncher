@@ -107,6 +107,11 @@ pub async fn cf_search(
 }
 
 #[tauri::command]
+pub async fn cf_browse(path: String, query: Vec<(String, String)>) -> Result<serde_json::Value, String> {
+    engine::cf_browse(path, query).await
+}
+
+#[tauri::command]
 pub async fn cf_install(app: tauri::AppHandle, mod_id: u32, game_version: String, profile: String, kind: String, file_id: Option<u64>, allow_mismatch: Option<bool>) -> Result<engine::ContentInstall, String> {
     engine::cf_install(app, engine::CfInstallReq {
         mod_id,

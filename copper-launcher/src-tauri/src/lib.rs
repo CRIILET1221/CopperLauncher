@@ -364,6 +364,7 @@ pub fn run() {
             commands::content::export_mrpack,
             commands::content::install_version,
             commands::content::cf_search,
+            commands::content::cf_browse,
             commands::content::cf_install,
             commands::content::cf_project,
             commands::content::cf_files,

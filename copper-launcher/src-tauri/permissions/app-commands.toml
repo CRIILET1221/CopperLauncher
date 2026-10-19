@@ -133,6 +133,7 @@ permissions = [
   "allow-export-mrpack",
   "allow-install-version",
   "allow-cf-search",
+  "allow-cf-browse",
   "allow-cf-install",
   "allow-cf-project",
   "allow-cf-files",

@@ -313,6 +313,16 @@ pub async fn cf_search(
     Ok(out)
 }
 
+/// Read-only browsing for the catalogue screen: the webview builds the filters,
+/// the core forwards them through the same proxy/mirror path as everything else.
+/// Only the search and category endpoints are reachable this way.
+pub async fn cf_browse(path: String, query: Vec<(String, String)>) -> Result<Value, String> {
+    if path != "v1/mods/search" && path != "v1/categories" {
+        return Err("Этот адрес CurseForge каталогу недоступен".into());
+    }
+    cf_get(&path, &query).await
+}
+
 pub struct CfInstallReq {
     pub mod_id: u32,
     pub game_version: String,
