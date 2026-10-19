@@ -119,3 +119,31 @@
 .nb2-ask-box > b { font-size: 18px; }
 .nb2-ask-box ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; color: var(--m-fg-muted); }
 .nb2-ask-foot { display: grid; gap: 8px; width: 100%; margin-top: 6px; }
+
+/* Окно помещается в область под заголовком лаунчера: высоту считаем от
+   затемнённого фона (100%), а не от всего экрана (100vh) — иначе низ окна
+   с кнопками «Отмена» и «Создать» уходил за край. Когда места мало,
+   сжимается только список версий: у него своя прокрутка. */
+:root #nbModal .modal.nb-modal.nb2 { display: flex; flex-direction: column; max-height: calc(100% - 32px); }
+:root #nbModal .modal.nb2 > * { flex-shrink: 0; }
+:root #nbModal .modal.nb2 > .nb-field:has(> .nb2-vgrid) { flex: 1 1 auto; min-height: 150px; overflow: hidden; display: flex; flex-direction: column; }
+:root #nbModal .nb2-vgrid { flex: 1 1 222px; height: auto; max-height: 222px; min-height: 92px; }
+
+/* Строка «Версия Minecraft»: заголовок слева, поиск и переключатель — одной
+   группой справа, всё по центру строки. */
+.nb2-vhead { align-items: center; }
+.nb2-vhead > span:first-child { flex: 1 1 auto; }
+.nb2-vhead > .tgl { margin-left: 4px; }
+.nb2 .nb2-search { width: 150px; height: 34px !important; margin: 0; }
+/* Низкое окно лаунчера (до 700 px): плотнее отступы и ниже плитки загрузчиков,
+   чтобы окно «Новая сборка» влезало целиком и в минимальном размере. */
+@media (max-height: 700px) {
+  :root #nbModal .modal.nb-modal.nb2 { padding-top: 18px; padding-bottom: 18px; }
+  :root #nbModal .modal.nb2 h3 { margin-bottom: 12px; }
+  :root #nbModal .nb2-head { margin-bottom: 12px; }
+  :root #nbModal .nb2-loaders { margin-bottom: 12px; }
+  :root #nbModal .nb2-lt { height: 78px; }
+  :root #nbModal .nb2-lt img { width: 30px; height: 30px; }
+  :root #nbModal .modal.nb2 > .nb-field:has(> .nb2-vgrid) { margin-top: 8px; min-height: 126px; }
+  :root #nbModal .modal.nb2 .nb-foot { margin-top: 12px; }
+}
