@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="190" height="64" viewBox="0 0 190 64" role="img" aria-label="Все версии">
+  <path fill="#090c0b" d="M4 0h182v4h4v56h-4v4H4v-4H0V4h4z"/>
+  <path fill="#1f3329" d="M6 3h178v3h3v52h-3v3H6v-3H3V6h3z"/>
+  <rect x="6" y="3" width="178" height="3" fill="#344c3f"/>
+  <rect x="6" y="54" width="178" height="4" fill="#0f1a15"/>
+  <text x="95" y="39" fill="#e5e9df" text-anchor="middle" font-family="'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="20" font-weight="800">Все версии</text>
+</svg>

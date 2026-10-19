@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="64" viewBox="0 0 340 64" role="img" aria-label="Скачать для Windows">
+  <path fill="#090c0b" d="M4 0h332v4h4v56h-4v4H4v-4H0V4h4z"/>
+  <path fill="#c0694a" d="M6 3h328v3h3v52h-3v3H6v-3H3V6h3z"/>
+  <rect x="6" y="3" width="328" height="3" fill="#d9825c"/>
+  <rect x="6" y="54" width="328" height="4" fill="#8a4630"/>
+  <path fill="#101a15" transform="translate(36 21) scale(1.75)" d="M5 0h2v6h2v1H8v1H7v1H5V8H4V7H3V6h2zM0 10h12v2H0z"/>
+  <text x="186" y="39" fill="#101a15" text-anchor="middle" font-family="'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="20" font-weight="800">Скачать для Windows</text>
+</svg>

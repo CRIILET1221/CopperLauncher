@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Copper Launcher — лаунчер Minecraft">
+  <defs>
+    <radialGradient id="glow" cx="30%" cy="50%" r="70%">
+      <stop offset="0" stop-color="#24382d"/>
+      <stop offset="1" stop-color="#151b18"/>
+    </radialGradient>
+  </defs>
+  <path fill="#2a8a7a" d="M8 0h1264v8h8v304h-8v8H8v-8H0V8h8z"/>
+  <path fill="url(#glow)" d="M12 4h1256v8h8v296h-8v8H12v-8H4V12h8z"/>
+  <g transform="translate(84 60) scale(12.5)" shape-rendering="crispEdges">
+    <path fill="#2a8a7a" d="M1 0h14v1h1v14h-1v1H1v-1H0V1h1z"/>
+    <path fill="#16241d" d="M1 1h14v14H1z"/>
+    <path fill="#e08a63" d="M5 4h7v1H5zM4 5h1v1H4zM6 10h6v1H6z"/>
+    <path fill="#c0694a" d="M5 5h1v1H5zM4 6h2v4H4zM5 10h1v1H5z"/>
+    <path fill="#8a4630" d="M6 5h6v1H6zM4 10h1v1H4zM5 11h7v1H5z"/>
+  </g>
+  <g font-family="'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+    <text x="340" y="122" fill="#5fc7b1" font-size="18" font-weight="700" letter-spacing="4">ЛАУНЧЕР MINECRAFT</text>
+    <text x="336" y="196" fill="#f0b48f" font-size="72" font-weight="800" letter-spacing="-1">Copper Launcher</text>
+    <text x="340" y="242" fill="#c9d3cb" font-size="24">Сборки, моды и вход через Microsoft — без лишнего</text>
+  </g>
+</svg>
