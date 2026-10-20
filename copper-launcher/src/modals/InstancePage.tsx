@@ -4,14 +4,13 @@ import { ContextMenu,type ContextItem } from '../components/ContextMenu'
 import { Icon } from '../components/Icon'
 import { IconEditor } from '../components/IconEditor'
 import { ModVersionPick } from '../components/ModVersionPick'
-import { PackAutoUpdateRow } from '../components/PackAutoUpdateRow'
-import { PackUpdateRow } from '../components/PackUpdateRow'
+
 import { BuildIcon } from '../components/playhub/BuildIcon'
 import { BuildIconPicker,BuildMenuItems,useMenuDismiss } from '../components/playhub/MyBuilds'
 import { SafetyModal } from '../components/SafetyModal'
 import { ScreenshotGallery } from '../components/ScreenshotGallery'
 import { Select } from '../components/Select'
-import { SharePackModal } from '../components/SharePackModal'
+
 import { Slider } from '../components/Slider'
 import { TunePanel } from '../components/TunePanel'
 import { WorldManager } from '../components/WorldManager'
@@ -71,7 +70,7 @@ updateContent
 } from '../ipc/commands'
 import { listenDragDrop,listenDragState,listenGameLog,listenGameLogStart } from '../ipc/events'
 import { hasTauri } from '../ipc/tauri'
-import { hasCopperAccount,mirrorAsset } from '../lib/api'
+import { mirrorAsset } from '../lib/api'
 import { apiErrorText } from '../lib/apiError'
 import { randomIcon } from '../lib/buildIcon'
 import { copyText } from '../lib/clipboard'
@@ -93,12 +92,11 @@ import { stopRunningGame,useGame } from '../state/game'
 import { useInstance } from '../state/instance'
 import { ensureMcVersionList,useMcVersionList,versionOptions } from '../state/mcVersionList'
 import { useMigrate } from '../state/migrate'
-import { openMilli } from '../state/milli'
 import { useModpackVersions } from '../state/modpack'
 import { useMods } from '../state/mods'
-import { useGuarded,useProfiles } from '../state/profiles'
+import { useProfiles } from '../state/profiles'
 import { openProject } from '../state/project'
-import { closeModal,openModal,setScreen,showToast,useUi } from '../state/ui'
+import { closeModal, setScreen, showToast, useUi } from '../state/ui'
 import '../styles/pixel/build-page.css'
 
 const ramKey = (p: string) => 'm-ram-' + p
@@ -140,7 +138,6 @@ const acceptsFile = (kind: string, p: string) => {
   return parts.length > 1 && extsOf(kind).includes(parts[parts.length - 1].toLowerCase())
 }
 
-function shareCatalogLink(_profile: string) { showToast('Обмен через каталог исходного лаунчера удалён', 'error') }
 
 const CORE_OPTS: [string, string][] = [
   ['vanilla', 'Ванилла'],
@@ -196,7 +193,6 @@ export function InstancePage() {
   const profile = useInstance((s) => s.profile)
   const profiles = useProfiles((s) => s.profiles)
   const pr = profiles.find((x) => x.name === profile) || null
-  const guarded = useGuarded(profile)
 
   const [iconEditor, setIconEditor] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -292,7 +288,7 @@ export function InstancePage() {
     pr ? loaderId(pr) : 'vanilla',
     pr ? pr.loader_version : null,
     mcList,
-    modal.open && tab === 'opts' && !guarded,
+    modal.open && tab === 'opts',
   )
   const [note, setNote] = useState('')
   const logBodyRef = useRef<HTMLPreElement>(null)
@@ -301,7 +297,7 @@ export function InstancePage() {
   const tabRef = useRef(tab)
   tabRef.current = tab
   const [safetyOpen, setSafetyOpen] = useState(false)
-  const [shareOpen, setShareOpen] = useState(false)
+
   const [dropActive, setDropActive] = useState(false)
   const [dropBusy, setDropBusy] = useState(false)
   // Редкие действия со списком (опознать, проверить, экспорт) — в меню «Ещё»:
@@ -377,12 +373,6 @@ export function InstancePage() {
       setUpd({})
       setItemLabels({})
       if (!profile) return
-      if (useProfiles.getState().guarded.includes(profile)) {
-        setItems([])
-        setEmptyList(false)
-        setNoticeList('')
-        return
-      }
       if (!hasTauri()) {
         // Демо (?preview): список модов как в настоящей сборке, чтобы видеть экран целиком.
         const demo = DEMO_USER && kk === 'mod' ? DEMO_MODS : []
@@ -430,7 +420,7 @@ export function InstancePage() {
 
   const runAudit = useCallback(
     (auto: boolean, fix: boolean = auto) => {
-      if (!profile || !hasTauri() || useProfiles.getState().guarded.includes(profile)) return
+      if (!profile || !hasTauri()) return
       setAuditBusy(true)
       auditDeps(profile)
         .then((r) => {
@@ -532,7 +522,7 @@ export function InstancePage() {
 
   useEffect(() => {
     if (!modal.open || !profile) return
-    const { tab: wantTab, focusRename, share: wantShare } = useInstance.getState()
+    const { tab: wantTab, focusRename } = useInstance.getState()
     setTab(wantTab)
     if (wantTab === 'worlds') loadWorlds()
     if (wantTab === 'logs') loadLogs()
@@ -546,10 +536,7 @@ export function InstancePage() {
       })
       useInstance.getState().set({ focusRename: false })
     }
-    const shareLink = wantShare && useProfiles.getState().guarded.includes(profile)
-    setShareOpen(wantShare && !shareLink)
-    if (shareLink) shareCatalogLink(profile)
-    if (wantShare) useInstance.getState().set({ share: false })
+
     setKind('mod')
     setPlaytime('')
     setRam(parseInt(localStorage.getItem(ramKey(profile)) || '0', 10) || 0)
@@ -793,14 +780,12 @@ export function InstancePage() {
     listenDragDrop((paths) => {
       setDropActive(false)
       if (!useUi.getState().modals.bsModal.open || tabRef.current !== 'content') return
-      if (useProfiles.getState().guarded.includes(useInstance.getState().profile || '')) return
       void addFiles(paths || [])
     }).then((u) => {
       unlistenDrop = u
     })
     listenDragState((active) => {
-      const shut = useProfiles.getState().guarded.includes(useInstance.getState().profile || '')
-      setDropActive(active && !shut && useUi.getState().modals.bsModal.open && tabRef.current === 'content')
+      setDropActive(active && useUi.getState().modals.bsModal.open && tabRef.current === 'content')
     }).then((u) => {
       unlistenState = u
     })
@@ -1147,22 +1132,7 @@ export function InstancePage() {
               </div>
             </div>
             <div className="inst-actions">
-              <button
-                className="btn md secondary inst-share"
-                onClick={() => {
-                  if (!hasTauri()) {
-                    showToast('Доступно в приложении')
-                    return
-                  }
-                  if (guarded) {
-                    shareCatalogLink(profile!)
-                    return
-                  }
-                  setShareOpen(true)
-                }}
-              >
-                <Icon id="i-link" /> Поделиться
-              </button>
+
               {thisRunning ? (
                 <button
                   className="btn lg stop"
@@ -1250,7 +1220,7 @@ export function InstancePage() {
             ))}
           </nav>
           <div className="inst-content">
-            {modal.open && profile ? <PackUpdateRow profile={profile} onUpdated={() => loadMods()} /> : null}
+
             <div id="bsTabContent" style={{ display: tab === 'content' ? '' : 'none' }}>
               {dlOpen && pr ? (
                 <ModDownloader
@@ -1271,25 +1241,6 @@ export function InstancePage() {
                   }}
                 />
               ) : null}
-              {guarded ? (
-                <div className="bx-mini-empty pr-locked" id="bsGuarded">
-                  <Icon id="i-lock" />
-                  <b>Эту сборку менять нельзя</b>
-                  <span>Моды в ней ставит сервер — так она всегда совпадает с ним</span>
-                  <button
-                    type="button"
-                    className="btn md primary"
-                    data-track="guarded_new_build"
-                    onClick={() => {
-                      close()
-                      openModal('nbModal')
-                    }}
-                  >
-                    <Icon id="i-plus" /> Своя сборка с модами
-                  </button>
-                </div>
-              ) : (
-              <>
               {/* Ряд 1: что редактируем (вкладки со счётчиками) и как добавить — как в Modrinth App. */}
               <div className="bpg-bar">
                 <div className="bpg-kinds" role="tablist" aria-label="Что в сборке">
@@ -1643,8 +1594,6 @@ export function InstancePage() {
                   </button>
                 </div>
               ) : null}
-              </>
-              )}
             </div>
 
             <div id="bsTabWorlds" style={{ display: tab === 'worlds' ? '' : 'none' }}>
@@ -2202,7 +2151,7 @@ export function InstancePage() {
                   Версии
                 </button>
               </div>
-              {profile ? <PackAutoUpdateRow profile={profile} /> : null}
+
               <div className="bx-opts-cap">Игра</div>
               <div className="set-row">
                 <span className="lab">
@@ -2277,24 +2226,12 @@ export function InstancePage() {
                     setRepairBusy(true)
                     const name = profile!
                     repairPack(name)
-                      .then((r) => {
-                        // Причину вылета ядро не опознало — Милли смотрит лог и сборку целиком.
-                        if (!r?.unresolved || !hasCopperAccount()) return
-                        const crash = r.unresolved
-                        void import('../lib/milliDoctor').then((d) => {
-                          d.startMilliDoctor()
-                          const { text, action } = d.crashAction({ profile: name, reason: crash.reason, tail: '', culprits: crash.culprits, actions: crash.actions, kind: crash.kind })
-                          openMilli({ src: 'repair' })
-                          void d.pushMilliAction(text, action, ['Почему так?', 'Осмотри сборку'])
-                        })
-                      })
                       .finally(() => setRepairBusy(false))
                   }}
                 >
                   <Icon id="i-restart" /> {repairBusy ? 'Чиним…' : 'Починить'}
                 </button>
               </div>
-              {guarded ? null : (
               <div className="set-row">
                 <span className="lab">Папка сборки</span>
                 <button
@@ -2308,7 +2245,6 @@ export function InstancePage() {
                   <Icon id="i-folder" /> Открыть
                 </button>
               </div>
-              )}
               <div className="set-row">
                 <span className="lab">
                   Копия сборки
@@ -2577,7 +2513,7 @@ export function InstancePage() {
       {safetyOpen ? (
         <SafetyModal profile={profile!} onClose={() => setSafetyOpen(false)} onChanged={() => loadMods()} />
       ) : null}
-      {shareOpen ? <SharePackModal profile={profile!} onClose={() => setShareOpen(false)} /> : null}
+
       {pickIcon && profile ? <BuildIconPicker name={profile} icon={pr ? pr.icon : null} onClose={() => setPickIcon(false)} /> : null}
       {iconEditor && profile ? (
         <IconEditor

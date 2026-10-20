@@ -9,11 +9,10 @@ import {
   type StoreGameState,
 } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
-import { GAMES, gameBuyUrl, gameHero, gamePoster, gameSite, useGame, type GameInfo } from '../lib/games'
+import { GAMES, gameBuyUrl, gameHero, gamePoster, useGame, type GameInfo } from '../lib/games'
 import { runInstall, runningMsg, stopInstall, useInstalls } from '../state/installs'
 import { PauseInstall } from '../components/PauseInstall'
 import { showToast } from '../state/ui'
-import { BedrockServers } from '../components/playhub/BedrockServers'
 import '../styles/pixel/game.css'
 
 /*
@@ -72,7 +71,6 @@ export function Game({ on }: { on: boolean }) {
         </div>
       </div>
 
-      {game.slug === 'bedrock' ? <BedrockServers on={on} /> : null}
 
       <div className="gm-head">
         <h2>Другие игры</h2>
@@ -120,16 +118,10 @@ function openStore(slug: string, via: 'steam' | 'steam-install' | 'store-page' |
 export function Actions({ game, st, onChanged }: { game: GameInfo; st: StoreGameState | null; onChanged: () => void }) {
   const key = 'game-' + game.slug
   const task = useInstalls((s) => s.tasks[key])
-  const page = (
-    <button className="btn md ghost" data-track="game_site" onClick={() => void openUrl(gameSite(game.slug))}>
-      <PxIcon name="book" size={18} /> Об игре
-    </button>
-  )
   if (st && !st.windows)
     return (
       <div className="gm-actions">
         <span className="gm-tag">Только Windows</span>
-        {page}
       </div>
     )
   if (task && task.state === 'run')
@@ -188,7 +180,6 @@ export function Actions({ game, st, onChanged }: { game: GameInfo; st: StoreGame
           Купить в Blups
         </button>
       ) : null}
-      {page}
     </div>
   )
 }

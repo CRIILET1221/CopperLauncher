@@ -146,6 +146,6 @@ describe('lowerForOldWebKit', () => {
     const { stats: full } = lowerForOldWebKit(all)
     expect(full.unresolved, 'a new color-mix with nothing static paints transparent on macOS 10.13-11').toEqual([])
     expect(full.colorMixLowered).toBe(full.colorMix)
-    expect(full.colorMix).toBeGreaterThan(100)
+    expect(full.colorMix).toBeGreaterThan(50)
   })
 })

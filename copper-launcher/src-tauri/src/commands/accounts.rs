@@ -10,8 +10,6 @@ pub async fn discord_presence(
     playing: bool,
     large_image: Option<String>,
     large_text: Option<String>,
-    join_url: Option<String>,
-    profile_slug: Option<String>,
 ) -> discord::DiscordStatus {
     discord::set_activity(discord::Presence {
         details,
@@ -19,8 +17,6 @@ pub async fn discord_presence(
         playing,
         large_image: large_image.unwrap_or_default(),
         large_text: large_text.unwrap_or_default(),
-        join_url: join_url.unwrap_or_default(),
-        profile_slug: profile_slug.unwrap_or_default(),
     })
     .await;
     discord::status()
@@ -110,45 +106,13 @@ pub async fn ms_reset_skin(account_id: String) -> Result<serde_json::Value, Stri
 
 #[derive(serde::Serialize)]
 pub struct SessionStatus {
-    pub copper: bool,
     pub accounts: std::collections::HashMap<String, bool>,
 }
 
 /// The only session fact the webview gets: which sessions are stored.
 #[tauri::command(async)]
 pub fn session_status(account_ids: Vec<String>) -> SessionStatus {
-    let (copper, accounts) = engine::session_presence(&account_ids);
-    SessionStatus { copper, accounts }
-}
-
-#[tauri::command]
-pub async fn copper_login_poll(device_code: String) -> Result<serde_json::Value, String> {
-    engine::copper_login_poll(device_code).await
-}
-
-#[tauri::command(async)]
-pub fn copper_logout() -> Result<(), String> {
-    engine::copper_forget_session()
-}
-
-#[tauri::command]
-pub async fn copper_api(path: String, method: String, body: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
-    if !engine::webview_path_allowed(&path) {
-        return Err("bad path".into());
-    }
-    engine::copper_api_auth(path, method, body).await
-}
-
-#[tauri::command(async)]
-pub fn set_local_skin(skin: Option<String>, cape: Option<String>, slim: bool) -> Result<(), String> {
-    engine::set_local_skin(skin, cape, slim)
-}
-
-/// Why the applied skin is not in the game. The webview names the account it
-/// shows, never a URL: the address of our own API is the core's to know.
-#[tauri::command]
-pub async fn skin_diagnose(nick: String, online: bool) -> serde_json::Value {
-    engine::skin_diagnose(&nick, online).await
+    SessionStatus { accounts: engine::session_presence(&account_ids) }
 }
 
 #[tauri::command(async)]

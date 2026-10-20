@@ -7,12 +7,9 @@ use serde::Serialize;
 
 use crate::engine::*;
 
-const SHARE_ENDPOINT: &str = "/launcher/screenshots";
 /// The gallery is a wall of images decoded by the webview; past this many the
 /// list itself becomes the slow part.
 const MAX_LISTED: usize = 400;
-/// Matches what the API accepts. A 4K screenshot is around 8 MB.
-const MAX_SHARE_BYTES: u64 = 12 * 1024 * 1024;
 
 #[derive(Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -131,28 +128,6 @@ pub async fn save_screenshot_as(profile: String, name: String) -> Result<Option<
     let Some(out) = picked else { return Ok(None) };
     std::fs::copy(&src, &out).map_err(|e| format!("Не удалось сохранить: {}", e))?;
     Ok(Some(out.to_string_lossy().to_string()))
-}
-
-/// Publishes the screenshot and returns the link to it. The bytes are read by
-/// the core from a path it resolved itself, so the webview cannot aim the
-/// upload at another file.
-pub async fn share_screenshot(profile: String, name: String) -> Result<String, String> {
-    let path = shot_path(&profile, &name)?;
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    if meta.len() > MAX_SHARE_BYTES {
-        return Err(format!(
-            "Скриншот больше {} МБ — такой не примет сервер",
-            MAX_SHARE_BYTES / 1024 / 1024
-        ));
-    }
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let file = safe_file_name(&name)?;
-    let res = copper_upload_auth(SHARE_ENDPOINT.to_string(), file, "image/png", bytes, vec![]).await?;
-    res.get("url")
-        .and_then(|v| v.as_str())
-        .filter(|u| u.starts_with("https://"))
-        .map(str::to_string)
-        .ok_or_else(|| "Сервер не вернул ссылку на скриншот".into())
 }
 
 pub fn screenshot_count(profile: &str) -> usize {

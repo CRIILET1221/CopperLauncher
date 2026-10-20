@@ -1,25 +1,15 @@
 import { hasTauri } from '../ipc/tauri'
 import { sessionStatus } from '../ipc/commands'
-import { DEMO_USER } from './demo'
 
 export const SECRETS_CHANGED_EVENT = 'copper-secrets-changed'
 
 // Tokens live in the core vault only. The webview keeps nothing but the fact
 // that a session exists, so an XSS has nothing to steal.
-let copper = false
 const accounts = new Map<string, boolean>()
 let readyPromise: Promise<void> | null = null
 
 function announce() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(SECRETS_CHANGED_EVENT))
-}
-
-export function hasCopperSession(): boolean {
-  // Демо-просмотр в браузере (?preview=user, только dev): сессии Copper без
-  // Tauri нет, и без этого половина экранов упирается в «Войти». В релизе
-  // DEMO_USER — константа false, и ветка вырезается сборкой.
-  if (import.meta.env.DEV && DEMO_USER) return true
-  return copper
 }
 
 export function hasAccountSession(id: string): boolean {
@@ -51,14 +41,12 @@ function dropLegacyTokens() {
 
 export async function refreshSessionState(): Promise<void> {
   if (!hasTauri()) {
-    copper = false
     accounts.clear()
     announce()
     return
   }
   try {
     const s = await sessionStatus(knownAccountIds())
-    copper = !!s.copper
     accounts.clear()
     Object.entries(s.accounts || {}).forEach(([id, present]) => accounts.set(id, !!present))
   } catch {

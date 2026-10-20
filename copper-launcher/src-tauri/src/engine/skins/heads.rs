@@ -5,14 +5,12 @@ use std::time::{Duration, SystemTime};
 
 // Player head avatars, cached on disk so repeat views are instant and offline.
 
-const HEAD_URL: &str = "copper-disabled://removed-service/v2/heads/avatar/";
 const HEAD_PX: u32 = 64;
 /// A face is 8x8 skin pixels: only a multiple of 8 gives every pixel the same
 /// width on screen, anything else renders the face torn.
 const HEAD_CELLS: u32 = 8;
 const HEAD_PX_MAX: u32 = 512;
 const TTL: Duration = Duration::from_secs(14 * 24 * 3600);
-const MAX_BYTES: usize = 200_000;
 const MAX_FILES: usize = 400;
 
 fn heads_dir() -> PathBuf {
@@ -68,35 +66,13 @@ fn prune(dir: &std::path::Path) {
     }
 }
 
-/// The nick is already sanitized, so it cannot inject a path into the URL.
-async fn download_head_service(nick: &str, px: u32) -> Result<Vec<u8>, String> {
-    let url = format!("{}{}?size={}", HEAD_URL, nick, px);
+/// The player's current Mojang skin, i.e. the one the game draws.
+async fn download(nick: &str, px: u32) -> Result<Vec<u8>, String> {
+    let tex = mc_textures(nick.to_string()).await?;
+    let url = tex["skin"].as_str().ok_or("у игрока нет скина")?;
     let res = client().get(url).send().await.map_err(|e| e.to_string())?;
     if !res.status().is_success() {
-        return Err(format!("сервис голов ответил {}", res.status().as_u16()));
-    }
-    let bytes = read_capped(res, MAX_BYTES).await?;
-    if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-        return Err("сервис голов отдал не PNG".into());
-    }
-    Ok(bytes.to_vec())
-}
-
-/// Head rendered from the CustomSkinAPI skin, i.e. the same source
-/// CustomSkinLoader reads in game.
-async fn download_copper(nick: &str, px: u32) -> Result<Vec<u8>, String> {
-    let meta = get_json(&format!("{}/yggdrasil/csl/{}", COPPER_API, nick)).await?;
-    let hash = meta["skins"]["default"]
-        .as_str()
-        .or_else(|| meta["skins"]["slim"].as_str())
-        .ok_or("у игрока нет скина Copper")?;
-    let res = client()
-        .get(format!("{}/yggdrasil/csl/textures/{}", COPPER_API, hash))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("скин Copper недоступен ({})", res.status().as_u16()));
+        return Err(format!("скин недоступен ({})", res.status().as_u16()));
     }
     let bytes = read_capped(res, 2_000_000).await.map_err(|_| "скин слишком большой".to_string())?;
     tokio::task::spawn_blocking(move || head_from_skin(&bytes, px))
@@ -128,15 +104,6 @@ fn head_from_skin(skin: &[u8], px: u32) -> Result<Vec<u8>, String> {
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
     Ok(png)
-}
-
-/// CustomSkinAPI first, then the platform head renderer for accounts that have
-/// no profile here.
-async fn download(nick: &str, px: u32) -> Result<Vec<u8>, String> {
-    match download_copper(nick, px).await {
-        Ok(bytes) => Ok(bytes),
-        Err(_) => download_head_service(nick, px).await,
-    }
 }
 
 /// Head as a data URL. A stale cache entry is served when the remote fails, so

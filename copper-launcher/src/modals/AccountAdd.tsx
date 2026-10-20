@@ -3,12 +3,11 @@ import { Icon } from '../components/Icon'
 import { backdropClose } from '../lib/dismiss'
 import { useAccounts } from '../state/accounts'
 import { cancelElyLogin,copyElyCode,copyElyVerifyLink,openElyVerifyPage,startElyLogin,useElyLogin } from '../state/elyLogin'
-import { cancelWebLogin,copyUserCode,copyVerifyLink,startWebLogin,useLogin } from '../state/login'
 import { cancelMsLogin,copyMsCode,copyMsVerifyLink,openMsVerifyPage,startMsLogin,useMsLogin } from '../state/msLogin'
 import { closeModal,openModal,useUi } from '../state/ui'
 import { SecurityInfo } from './SecurityInfo'
 
-type Kind = 'copper' | 'microsoft' | 'elyby'
+type Kind = 'microsoft' | 'elyby'
 
 const KINDS: { id: Kind; ic: string; title: string; sub: string }[] = [
   {
@@ -20,7 +19,6 @@ const KINDS: { id: Kind; ic: string; title: string; sub: string }[] = [
 ]
 
 function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () => void; onDone: () => void; onSafety: () => void }) {
-  const login = useLogin()
   const ms = useMsLogin()
   const ely = useElyLogin()
   const count = useAccounts((s) => s.list.length)
@@ -37,9 +35,9 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
 
 
   const meta = KINDS.find((k) => k.id === kind)!
-  const busy = kind === 'copper' ? login.webBusy : kind === 'microsoft' ? ms.busy : kind === 'elyby' ? ely.busy : false
-  const code = kind === 'copper' ? login.userCode : kind === 'elyby' ? ely.userCode : ms.userCode
-  const hint = kind === 'copper' ? login.hintText : kind === 'elyby' ? ely.hint : ms.hint
+  const busy = kind === 'microsoft' ? ms.busy : kind === 'elyby' ? ely.busy : false
+  const code = kind === 'elyby' ? ely.userCode : ms.userCode
+  const hint = kind === 'elyby' ? ely.hint : ms.hint
 
   return (
     <>
@@ -47,7 +45,6 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
         className="btn sm ghost"
         style={{ alignSelf: 'flex-start', marginBottom: '12px' }}
         onClick={() => {
-          if (kind === 'copper') cancelWebLogin()
           if (kind === 'microsoft') cancelMsLogin()
           if (kind === 'elyby') cancelElyLogin()
           onBack()
@@ -72,7 +69,7 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
               <button
                 className="acc-code"
                 aria-label="Скопировать код"
-                onClick={() => void (kind === 'copper' ? copyUserCode() : kind === 'elyby' ? copyElyCode() : copyMsCode())}
+                onClick={() => void ( kind === 'elyby' ? copyElyCode() : copyMsCode())}
               >
                 <span>{code}</span>
                 <Icon id="i-copy" />
@@ -81,19 +78,19 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
                 <button
                   className="btn sm secondary"
                   style={{ flex: 1 }}
-                  onClick={() => (kind === 'copper' ? void startWebLogin(true) : kind === 'elyby' ? openElyVerifyPage() : openMsVerifyPage())}
+                  onClick={() => ( kind === 'elyby' ? openElyVerifyPage() : openMsVerifyPage())}
                 >
                   Открыть страницу
                 </button>
                 <button
                   className="btn sm ghost"
-                  onClick={() => (kind === 'copper' ? copyVerifyLink() : kind === 'elyby' ? copyElyVerifyLink() : copyMsVerifyLink())}
+                  onClick={() => ( kind === 'elyby' ? copyElyVerifyLink() : copyMsVerifyLink())}
                 >
                   Копировать ссылку
                 </button>
                 <button
                   className="btn sm ghost"
-                  onClick={() => (kind === 'copper' ? cancelWebLogin() : kind === 'elyby' ? cancelElyLogin() : cancelMsLogin())}
+                  onClick={() => ( kind === 'elyby' ? cancelElyLogin() : cancelMsLogin())}
                 >
                   Отмена
                 </button>
@@ -104,16 +101,14 @@ function KindPanel({ kind, onBack, onDone, onSafety }: { kind: Kind; onBack: () 
               className="btn md primary"
               style={{ width: '100%' }}
               disabled={busy}
-              onClick={() => void (kind === 'copper' ? startWebLogin() : kind === 'elyby' ? startElyLogin() : startMsLogin())}
+              onClick={() => void ( kind === 'elyby' ? startElyLogin() : startMsLogin())}
             >
               <Icon id={meta.ic} />
               {busy
                 ? 'Ждём подтверждения…'
-                : kind === 'copper'
-                  ? 'Войти через Copper'
-                  : kind === 'elyby'
-                    ? 'Войти через Ely.by'
-                    : 'Войти через Microsoft'}
+                : kind === 'elyby'
+                  ? 'Войти через Ely.by'
+                  : 'Войти через Microsoft'}
             </button>
           )}
           {/* Строка доверия под входом Microsoft (06.10.2026): ведёт на разбор

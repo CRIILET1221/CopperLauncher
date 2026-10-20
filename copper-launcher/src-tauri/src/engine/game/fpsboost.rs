@@ -92,13 +92,6 @@ pub fn boost_mods(loader: &str, game_version: &str) -> &'static [Slot] {
     }
 }
 
-/// A catalogue pack that starts by its own description brings its own
-/// renderer, JVM flags and options.txt (OneBlock: Angelica on lwjgl3ify, its
-/// resource packs listed in options.txt). The mode has nothing to add there and
-/// only overwrites what the author tuned.
-pub fn fps_boost_applicable(profile: &str) -> bool {
-    trusted_pack_launch_spec(profile).is_none() && !trusted_native_pack(profile)
-}
 
 /// Стоит ли мод режима уже в сборке. Манифест хранит канонический id проекта,
 /// а список режима задан slug'ами; старые манифесты (и офлайн-установка, где
@@ -194,7 +187,7 @@ pub struct FpsBoostState {
     pub vanilla: bool,
     /// The mode is on, but the set changed or skipped mods are due a recheck.
     pub stale: bool,
-    /// False for a build the mode must not touch (see `fps_boost_applicable`).
+    /// Всегда true: поле осталось для интерфейса.
     pub applicable: bool,
 }
 
@@ -237,7 +230,7 @@ pub fn fps_boost_state(profile: &str) -> FpsBoostState {
         flags: boost_flags().iter().map(|f| f.to_string()).collect(),
         video: s["fpsBoostVideo"].is_object(),
         vanilla: boost_mods(&loader, &profile_version(profile)).is_empty(),
-        applicable: fps_boost_applicable(profile),
+        applicable: true,
         stale: needs_top_up(
             s["fpsBoost"].as_bool().unwrap_or(false),
             s["fpsBoostSet"].as_u64().unwrap_or(1),
@@ -358,9 +351,6 @@ fn patch(profile: &str, entries: Vec<(&str, Value)>) {
 pub async fn set_fps_boost(app: AppHandle, profile: String, on: bool, keep_options: bool) -> Result<FpsBoostState, String> {
     if !load_profiles().iter().any(|p| p.name == profile) {
         return Err("Сборка не найдена".into());
-    }
-    if on && !fps_boost_applicable(&profile) {
-        return Err("Буст FPS этой сборке не нужен: графику, Java и настройки для неё подобрал автор".into());
     }
     if on {
         enable(&app, &profile, keep_options).await

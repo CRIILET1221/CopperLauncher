@@ -23,28 +23,24 @@ import {
   resolveTargetBuild,
   runPickedVersionInstall,
 } from '../lib/install'
-import { keyCatalogPack, keyCfModpack, keyContent, keyCopper, keyCopperModpack, keyMrModpack, pickTargetName } from '../lib/installKeys'
-import { installFromCatalog } from '../lib/catalogInstall'
+import { keyCfModpack, keyContent, keyMrModpack, pickTargetName } from '../lib/installKeys'
 import { runInstall, stopInstall, useInstalls } from '../state/installs'
 import { uiConfirm } from '../state/confirm'
 import { useProfiles } from '../state/profiles'
-import { openCfProject, openCopperProject, openProject, useProject } from '../state/project'
+import { openCfProject, openProject, useProject } from '../state/project'
 import { catalogTargetBuild, useMods } from '../state/mods'
 import { isInstalledInBuild } from '../lib/catalogInstalled'
-import { copperPid } from '../components/catalog/copperInstall'
 import type { ProjectLink, ProjectVersion } from '../state/project'
 import { closeModal, showToast, useUi } from '../state/ui'
-import { benchOp, useBench } from '../state/milliBench'
 import { backdropClose } from '../lib/dismiss'
 import { mirrorAsset, openExt } from '../lib/api'
 import { modpackVersionFor } from '../lib/modpackVersion'
-import { fmtNum, loaderIconSrc, loaderLabel } from '../components/catalog/site'
+import { fmtNum, loaderIconSrc, loaderLabel } from '../components/catalog/loaders'
 import { sizeLabel, spanOf } from '../components/catalog/itemView'
 import { agoLabel, compatOf, compatText, isForeign, kindLabel, licenseLabel, sideLabel, tidyBody } from './projectView'
 import type { BuildTarget, Compat } from './projectView'
-import { cachedTranslation, depProjects, saveLang, savedLang, translateProject, trErrorText } from './projectTranslate'
-import type { DepProject, TrView } from './projectTranslate'
-import { ProjectRuBody, TrMark, ruDescription, ruGallery, ruVersionName, useRuVersions } from './ProjectRuBody'
+import { depProjects } from './projectDeps'
+import type { DepProject } from './projectDeps'
 import '../styles/pixel/project-modal.css'
 
 /*
@@ -133,16 +129,10 @@ export function ProjectModal() {
   const selected = useProfiles((s) => s.selected)
   const selectedBuild = pickTargetName(scoped, allProfiles.map((p) => p.name), selected || '')
   const isCf = pj.source === 'curseforge'
-  const isMl = pj.source === 'copper'
   const src = isCf ? 'cf' : 'mr'
   const project: string | number = isCf ? pj.cfid : pj.slug
-  const packKey = isMl
-    ? pj.kind === 'modpack'
-      ? pj.launcherOnly
-        ? keyCatalogPack(pj.slug)
-        : keyCopperModpack(pj.slug)
-      : keyCopper(selectedBuild || '', pj.kind, pj.slug)
-    : pj.kind === 'modpack'
+  const packKey =
+    pj.kind === 'modpack'
       ? isCf
         ? keyCfModpack(pj.cfid)
         : keyMrModpack(pj.slug)
@@ -152,7 +142,7 @@ export function ProjectModal() {
     pj.kind !== 'modpack' &&
     pj.kind !== 'world' &&
     isInstalledInBuild(
-      isMl ? { pid: copperPid(pj.slug) } : isCf ? { cfid: pj.cfid } : { pid: pj.projectId, slug: pj.slug },
+      isCf ? { cfid: pj.cfid } : { pid: pj.projectId, slug: pj.slug },
       installedIds,
     )
   const isDone = (key: string): boolean => !!doneKeys[key] || (key === packKey && inBuild)
@@ -198,38 +188,12 @@ export function ProjectModal() {
   }, [pj.body])
   const stripRef = useRef<HTMLDivElement>(null)
   const projectKey = pj.source + ':' + (pj.source === 'curseforge' ? pj.cfid : pj.slug)
-  const [lang, setLang] = useState<'en' | 'ru'>(savedLang)
-  const [tr, setTr] = useState<{ key: string; view: TrView | null; err: string; busy: boolean }>({ key: '', view: null, err: '', busy: false })
-  const trKey = useRef('')
   const [deps, setDeps] = useState<Map<string, DepProject>>(() => new Map())
   useEffect(() => {
     setShot(0)
     setVerMode('auto')
     setVerLimit(VER_PAGE)
-    trKey.current = ''
-    setTr({ key: '', view: null, err: '', busy: false })
   }, [projectKey])
-  // Перевод описания: только Modrinth (сервер берёт текст сам) и только чужой язык.
-  // RU — по умолчанию: английский виден лишь после «Оригинал» (ProjectRuBody.tsx).
-  const canTranslate = pj.source === 'modrinth' && !!pj.slug && !!pj.body && desc.foreign
-  useEffect(() => {
-    if (!modal.open || lang !== 'ru' || !canTranslate || pj.loading) return
-    if (trKey.current === projectKey) return
-    const key = projectKey
-    const slug = pj.slug
-    trKey.current = key
-    setTr({ key, view: cachedTranslation(slug), err: '', busy: true })
-    const mine = (t: { key: string }) => t.key === key && trKey.current === key
-    translateProject(
-      slug,
-      (v) => setTr((t) => (mine(t) ? { ...t, view: v } : t)),
-      () => trKey.current === key && useUi.getState().modals.pjModal.open,
-    )
-      .then((v) => setTr((t) => (mine(t) ? { ...t, view: v, busy: false } : t)))
-      .catch((e) => setTr((t) => (mine(t) ? { ...t, view: null, err: trErrorText(e), busy: false } : t)))
-  }, [modal.open, lang, canTranslate, pj.loading, pj.slug, projectKey, tr.err])
-  // Имена версий по-русски — лениво, пока открыта вкладка «Версии».
-  const ruNames = useRuVersions(pj.slug, modal.open && lang === 'ru' && canTranslate && pj.tab === 'versions')
   // Новая вкладка и новый мод начинаются сверху, а не с середины прошлого описания.
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = 0
@@ -288,25 +252,6 @@ export function ProjectModal() {
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
   }, [modal.open])
-
-  // Мод из верстака: «в сборке ли» — из головы ревизии (общий стор), не из замыкания карточки.
-  const benchRef = pj.ctx?.bench ?? null
-  const benchIn = useBench((s) =>
-    benchRef && s.head ? s.head[benchRef.tab].some((m) => m.projectId === benchRef.projectId) : null,
-  )
-
-  // Открыли из сборки Милли — любое закрытие окна (крестик, Esc, фон, «← К
-  // сборке») возвращает в тот же чат, а не бросает игрока искать его в истории.
-  const backRef = useRef<(() => void) | null>(null)
-  useEffect(() => {
-    if (modal.open) {
-      backRef.current = pj.ctx?.onBack ?? null
-      return
-    }
-    const back = backRef.current
-    backRef.current = null
-    back?.()
-  }, [modal.open, pj.ctx])
 
   if (!modal.open) return null
   const close = () => closeModal('pjModal')
@@ -382,10 +327,6 @@ export function ProjectModal() {
       showToast('Установка доступна в приложении')
       return
     }
-    if (isMl) {
-      void installFromCatalog(pj.section, pj.slug)
-      return
-    }
     if (pj.kind === 'modpack') {
       installPack(fileId)
       return
@@ -438,10 +379,6 @@ export function ProjectModal() {
       showToast('Эта версия уже стоит' + (selectedBuild ? ' в «' + selectedBuild + '»' : ''), 'ok', false)
       return
     }
-    if (isMl) {
-      void installFromCatalog(pj.section, pj.slug, { fileId: v.id })
-      return
-    }
     if (isCf) {
       install(v.cfFileId)
       return
@@ -482,9 +419,7 @@ export function ProjectModal() {
   const versionsKnown = !pj.loading && pj.versions.length > 0
   const noFit = !!build && versionsKnown && fit.length === 0
 
-  const ctx = pj.ctx && benchIn !== null ? { ...pj.ctx, inPack: benchIn } : pj.ctx
-  const canToggle = !!ctx && (benchIn !== null || !!ctx.onToggle)
-  const srcName = isMl ? 'Copper' : isCf ? 'CurseForge' : 'Modrinth'
+  const srcName = isCf ? 'CurseForge' : 'Modrinth'
   const lic = licenseLabel(pj.license)
   const side = sideLabel(pj.clientSide, pj.serverSide)
   const loaders = pj.loaders.filter((l) => l !== 'minecraft' && l !== 'datapack' ? true : pj.kind === 'datapack')
@@ -502,17 +437,7 @@ export function ProjectModal() {
       list: (depVer && depVer.deps ? depVer.deps : []).filter((d) => d.type === type),
     }))
     .filter((g) => g.list.length)
-  const neededBy = ctx && ctx.neededBy ? ctx.neededBy : []
-  const showDeps = !isCf && !isMl && isContent && (depGroups.length > 0 || neededBy.length > 0 || versionsKnown)
-  const trOn = lang === 'ru' && canTranslate
-  const pickLang = (v: 'en' | 'ru') => {
-    if (v === lang && !(v === 'ru' && tr.err)) return
-    if (tr.err) trKey.current = ''
-    saveLang(v)
-    setLang(v)
-    // Снятая ошибка перезапускает эффект перевода (tr.err в его зависимостях).
-    if (tr.err) setTr((t) => ({ ...t, err: '' }))
-  }
+  const showDeps = !isCf && isContent && (depGroups.length > 0 || versionsKnown)
 
   const ctaNote: { text: string; sub?: string; warn?: boolean } | null =
     pj.kind === 'modpack'
@@ -525,26 +450,7 @@ export function ProjectModal() {
 
   const retry = () => {
     if (isCf) void openCfProject(pj.cfid, pj.kind, pj.title)
-    else if (isMl) void openCopperProject(pj.slug, pj.section, pj.kind)
-    else void openProject(pj.slug, pj.kind, pj.game, { ctx: pj.ctx })
-  }
-
-  const toggleMilli = () => {
-    if (!ctx) return
-    if (ctx.bench && benchIn !== null) {
-      // Оптимистично: голова меняется за кадр, кнопка перерисуется от стора.
-      void benchOp({ op: benchIn ? 'remove' : 'restore', tab: ctx.bench.tab, ref: ctx.bench.projectId })
-      return
-    }
-    if (!ctx.onToggle) return
-    ctx.onToggle()
-    pj.set({ ctx: { ...ctx, inPack: !ctx.inPack } })
-  }
-
-  const backToMilli = () => {
-    if (!ctx || !ctx.onBack) return
-    // Сам возврат в чат делает эффект закрытия окна.
-    close()
+    else void openProject(pj.slug, pj.kind, pj.game)
   }
 
   /// Картинка из описания — на весь экран; значки-ссылки (shields) остаются ссылками.
@@ -612,7 +518,6 @@ export function ProjectModal() {
         data-section="project"
         data-kind={pj.kind === 'world' ? 'map' : pj.kind}
         data-id={isCf ? String(pj.cfid) : pj.slug}
-        data-milli={ctx ? (ctx.inPack ? 'in' : 'out') : undefined}
       >
         <header className="pjx-head">
           <div className="pjx-glow" aria-hidden="true">
@@ -636,12 +541,6 @@ export function ProjectModal() {
                 <span>{kindLabel(pj.kind)}</span>
                 <span className="pjx-dot" aria-hidden="true" />
                 <span>{srcName}</span>
-                {ctx ? (
-                  <span className={'pjx-milli-tag' + (ctx.inPack ? '' : ' out')}>
-                    <PxIcon name={ctx.inPack ? 'check' : 'minus'} size={9} />
-                    {ctx.inPack ? 'В сборке помощника' : 'Убран из сборки'}
-                  </span>
-                ) : null}
               </div>
               <h2 id="pjTitle" className="pjx-title" title={pj.title}>
                 {pj.loading && (!pj.title || pj.title === 'Загружаем…') ? <span className="skel pjx-title-skel" /> : pj.title}
@@ -669,35 +568,10 @@ export function ProjectModal() {
                 {stats}
                 {!pj.author && pj.downloads === null && !pj.updated && pj.sub && !pj.loading ? <span className="pjx-stat">{pj.sub}</span> : null}
               </div>
-              {pj.summary ? (
-                trOn ? (
-                  <p className="pjx-summary" lang="ru">{ruDescription(tr.view, tr.err, pj.summary)}</p>
-                ) : (
-                  <p className="pjx-summary" title={pj.summary}>{pj.summary}</p>
-                )
-              ) : null}
+              {pj.summary ? <p className="pjx-summary" title={pj.summary}>{pj.summary}</p> : null}
             </div>
             <div className="pjx-cta">
-              {ctx && (ctx.locked || canToggle) ? (
-                ctx.locked ? (
-                  <span className="pjx-locked">
-                    <PxIcon name="lock" size={11} />
-                    Нужен для запуска
-                  </span>
-                ) : (
-                  <button
-                    className={'btn md ' + (ctx.inPack ? 'secondary pjx-rm' : 'primary')}
-                    data-track="milli_mod_toggle"
-                    data-src="project"
-                    data-id={pj.slug}
-                    onClick={toggleMilli}
-                  >
-                    <PxIcon name={ctx.inPack ? 'minus' : 'plus'} size={12} />
-                    {ctx.inPack ? 'Убрать из сборки' : 'Вернуть в сборку'}
-                  </button>
-                )
-              ) : (
-                <div className="pjx-cta-row">
+              <div className="pjx-cta-row">
                   <button
                     className={'btn md ' + (done && !running ? 'secondary pjx-done' : 'primary')}
                     id="pjInstall"
@@ -716,14 +590,7 @@ export function ProjectModal() {
                     </button>
                   ) : null}
                 </div>
-              )}
-              {ctx ? (
-                ctx.onBack ? (
-                  <button className="pjx-note pjx-back" data-track="milli_back" onClick={backToMilli}>
-                    <PxIcon name="arrow-l" size={10} />К сборке{ctx.packTitle ? ' «' + ctx.packTitle + '»' : ' помощника'}
-                  </button>
-                ) : null
-              ) : ctaNote && !running ? (
+              {ctaNote && !running ? (
                 <span className={'pjx-note' + (ctaNote.warn ? ' warn' : '')} title={ctaNote.text + (ctaNote.sub ? ' · ' + ctaNote.sub : '')}>
                   <span className="pjx-note-t">
                     {ctaNote.warn ? <PxIcon name="alert" size={10} /> : null}
@@ -748,7 +615,7 @@ export function ProjectModal() {
               {pj.tags.length ? <span className="pjx-sep" aria-hidden="true" /> : null}
               {pj.tags.slice(0, 4).map((c) => (
                 <span className="pjx-chip soft" key={c}>
-                  {!isCf && !isMl && MR_CATS.has(c) ? <i className="pjx-mi" style={maskIcon('/mr-icons/categories/' + c + '.svg')} aria-hidden="true" /> : null}
+                  {!isCf && MR_CATS.has(c) ? <i className="pjx-mi" style={maskIcon('/mr-icons/categories/' + c + '.svg')} aria-hidden="true" /> : null}
                   {RU_LOADER(c)}
                 </span>
               ))}
@@ -801,25 +668,12 @@ export function ProjectModal() {
                 <PxIcon name="book" size={11} />
                 <span className="pjx-art-t">
                   Описание автора
-                  {!trOn && desc.foreign ? ' · на английском' : ''}
+                  {desc.foreign ? ' · на английском' : ''}
                 </span>
-                {canTranslate && (desc.foreign || trOn) ? (
-                  <div className="pjx-lang" role="group" aria-label="Язык описания">
-                    {trOn && !tr.err ? <TrMark view={tr.view} busy={tr.busy} /> : null}
-                    <button className={'pjx-lang-b' + (!trOn ? ' on' : '')} aria-pressed={!trOn} data-track="pj_lang_en" onClick={() => pickLang('en')}>
-                      Оригинал
-                    </button>
-                    <button className={'pjx-lang-b ru' + (trOn ? ' on' : '')} aria-pressed={trOn} data-track="pj_lang_ru" onClick={() => pickLang('ru')}>
-                      RU
-                    </button>
-                  </div>
-                ) : null}
               </div>
               <div className="pjx-md pj-body" onClick={zoomFromArticle}>
                 {pj.loading ? (
                   skelLines([90, 100, 96, 72, 100, 84, 60])
-                ) : trOn ? (
-                  <ProjectRuBody key={projectKey} view={tr.view} busy={tr.busy} err={tr.err} onRetry={() => pickLang('ru')} onOriginal={() => pickLang('en')} />
                 ) : desc.nodes ? (
                   desc.nodes
                 ) : (
@@ -828,16 +682,6 @@ export function ProjectModal() {
               </div>
             </article>
             <aside className="pjx-aside">
-              {ctx && ctx.why ? (
-                <Plate className="pjx-milli" title={ctx.packTitle ? 'Сборка «' + ctx.packTitle + '»' : 'Сборка помощника'}>
-                  {ctx.why ? (
-                    <p className="pjx-why">
-                      <PxIcon name="sparkle" size={11} />
-                      <span>{ctx.why}</span>
-                    </p>
-                  ) : null}
-                </Plate>
-              ) : null}
               {isContent && (build || side || span) ? (
                 <Plate title="Совместимость">
                   {build && versionsKnown ? (
@@ -885,21 +729,7 @@ export function ProjectModal() {
                       </div>
                     </div>
                   ))}
-                  {neededBy.length ? (
-                    <div className="pjx-dg needed">
-                      <span className="pjx-dg-h">Нужен для</span>
-                      <div className="pjx-dg-list">
-                        {neededBy.slice(0, 8).map((t) => (
-                          <span className="pjx-dep static" key={t}>
-                            <i className="pjx-dep-ph" />
-                            <span>{t}</span>
-                          </span>
-                        ))}
-                        {neededBy.length > 8 ? <span className="pjx-dg-more">+{neededBy.length - 8}</span> : null}
-                      </div>
-                    </div>
-                  ) : null}
-                  {!depGroups.length && !neededBy.length ? (
+                  {!depGroups.length ? (
                     <span className="pjx-deps-none">
                       <PxIcon name="check" size={10} />
                       Работает сам, ничего не требует
@@ -981,8 +811,8 @@ export function ProjectModal() {
                 </div>
                 {cur.title || cur.description ? (
                   <div className="pjx-cap">
-                    {cur.title ? <b>{trOn ? ruGallery(tr.view, tr.err, cur.title, 'title') : cur.title}</b> : null}
-                    {cur.description ? <span>{trOn ? ruGallery(tr.view, tr.err, cur.description, 'description') : cur.description}</span> : null}
+                    {cur.title ? <b>{cur.title}</b> : null}
+                    {cur.description ? <span>{cur.description}</span> : null}
                   </div>
                 ) : null}
                 {pj.gallery.length > 1 ? (
@@ -1056,7 +886,7 @@ export function ProjectModal() {
                         <div className={'pjx-tr' + (c === 'ok' ? ' fit' : c === 'unknown' ? '' : ' miss')} role="row" key={v.id}>
                           {build ? <CompatMark c={c} /> : null}
                           <span className="pjx-vname" role="cell">
-                            <b title={trOn ? undefined : v.name}>{trOn ? ruVersionName(ruNames, v) : v.name}</b>
+                            <b title={v.name}>{v.name}</b>
                             <span>
                               {v.type && TYPE_RU[v.type] ? <i className={'pjx-type ' + v.type}>{TYPE_RU[v.type]}</i> : null}
                               {v.number && v.number !== v.name ? <span className="pjx-vnum">{v.number}</span> : null}

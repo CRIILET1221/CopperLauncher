@@ -7,17 +7,15 @@ import {
   listJavaRuntimes,
   listProfiles,
   readCrashes,
-  skinDiagnose,
 } from '../ipc/commands'
-import type { CrashEntry, DeviceSpecs, JavaRuntime, Profile, SkinDiag } from '../ipc/commands'
+import type { CrashEntry, DeviceSpecs, JavaRuntime, Profile } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
 import { detectGpu } from './gpu'
 import { recentIssues } from './crash'
 import { pendingUpdate } from './updater'
 import { soundMode, soundVolume } from './sound'
-import { skinSource } from './gameProfile'
 import { hasTray, launchWindowMode, restoreOnGameExit, trayCloseEnabled } from './window'
-import { getAccount, getCopperAccount, useAccounts } from '../state/accounts'
+import { getAccount, useAccounts } from '../state/accounts'
 import { accKindLabel } from './format'
 
 const MAX_BUILDS = 20
@@ -91,15 +89,6 @@ function issuesBlock(pending: CrashEntry[] | null): string[] {
   return out
 }
 
-function skinBlock(d: SkinDiag | null): string[] {
-  if (!d) return ['Скин в игре: проверка недоступна']
-  const out = ['Скин в игре: ' + d.verdict + ' — ' + d.text]
-  d.builds
-    .filter((b) => b.state !== 'ok' && b.state !== 'never_launched')
-    .forEach((b) => out.push('  - ' + b.build + ' (' + b.mc + ' · ' + b.loader + '): ' + b.text))
-  return out
-}
-
 export async function buildDiagnostics(): Promise<string> {
   const tauri = hasTauri()
   const [ver, specs, javas, dir, cache, profiles, crashes, flatpak] = await Promise.all([
@@ -116,8 +105,6 @@ export async function buildDiagnostics(): Promise<string> {
   const upd = pendingUpdate()
   const accounts = useAccounts.getState().list
   const acc = getAccount()
-  const copper = getCopperAccount()
-  const skin = tauri && acc ? await safe(() => skinDiagnose(acc.nick, !!copper)) : null
 
   const lines: (string | null)[] = [
     '=== Copper Launcher · диагностика ===',
@@ -146,9 +133,6 @@ export async function buildDiagnostics(): Promise<string> {
     '--- Аккаунты ---',
     'Всего: ' + accounts.length,
     'Активный: ' + (acc ? acc.nick + ' · ' + accKindLabel(acc.kind) : 'не выбран'),
-    'Copper: ' + (copper ? 'вход выполнен' : 'не выполнен вход'),
-    'Скины: ' + (skinSource() === 'copper' ? 'Copper' : 'Mojang'),
-    ...skinBlock(skin),
     '',
     '--- Настройки ---',
     'Акцент: ' + accentId(),

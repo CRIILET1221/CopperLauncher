@@ -11,10 +11,6 @@ pub static RUNNING: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
 
 const EXIT_POLL: std::time::Duration = std::time::Duration::from_secs(2);
 const PLAYTIME_FLUSH: std::time::Duration = std::time::Duration::from_secs(60);
-/// Сколько секунд сессии считается доказательством, что сборка открылась.
-/// Полторы минуты — это дальше загрузки модов и окна входа; всё, что короче,
-/// одинаково похоже и на запуск, и на вылет на середине загрузки.
-pub(super) const LAUNCH_CHECK_ALIVE: u64 = 90;
 
 /// Pids killed on user request: a non-zero exit code for them is not a crash.
 static STOPPED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
@@ -849,8 +845,7 @@ pub(crate) async fn resolve_profile_java(app: &AppHandle, profile: &str) -> Resu
 /// JVM flags that hand the JVM something to execute: native/Java agents, hooks
 /// fired on VM errors, and options that decide which classes get loaded.
 ///
-/// This black list only guards flags from our own API (pack launch tokens) and
-/// from loader version jsons. Flags a player or a shared build can write go
+/// This black list guards flags from loader version jsons. Flags a player or a shared build can write go
 /// through the white list in `user_jvm_arg_allowed`.
 const BLOCKED_JVM_PREFIXES: &[&str] = &[
     "-javaagent",
@@ -1311,108 +1306,15 @@ pub async fn install_and_launch_in(
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(Value::Null);
-    // Ahead of the Java pick: a pinned Java would otherwise be downloaded for
-    // a game that never runs on it.
-    if let Some(native) = trusted_native_launch(&profile) {
-        return launch_native(app, profile, nick, auth, &settings, native?).await;
-    }
     let java_pick = resolve_profile_java(&app, &profile).await?;
     let game_dir = profile_dir(&profile);
-    /*
-     * A catalogue pack that brought its own game is launched by its own
-     * description: it ships libraries, minecraft.jar, assets and natives, and
-     * its content is loaded out of those libraries rather than out of `mods/`.
-     * Assembling such a build from parts gives a folder that starts without
-     * most of what the player paid for.
-     */
-    // the descriptor is a file in the profile folder: it is honoured only for
-    // a build the core itself installed from the catalogue
-    let pack = trusted_pack_launch_spec(&profile);
-    if !pack.as_ref().is_some_and(|spec| spec.needs_token) {
-        if let Some(slug) = launch_gate_slug(&settings) {
-            pack_launch_gate(&slug).await?;
-        }
-    }
-    let (v, main_class, classpath, java, assets_root, natives_dir, libraries_dir) = match &pack {
-        Some(spec) => {
-            emit(&app, "launch", 20.0, "Готовим сборку…");
-            let token = if spec.needs_token {
-                match pack_launch_token(&spec.slug).await {
-                    Ok(t) => t,
-                    Err(e) => {
-                        if let Ok(Some(PackAccess::Lost(reason))) = pack_access(&spec.slug).await {
-                            return Err(forfeit_pack(&app, &profile, &spec.slug, &reason).await);
-                        }
-                        return Err(e);
-                    }
-                }
-            } else {
-                Vec::new()
-            };
-            /*
-             * A pack names the Java it was built for, and a player's own Java
-             * older than that never starts it: Java 8 does not even read the
-             * argument file, so a 1.20.1 pack dies with «Could not find or load
-             * main class @…copper-args.txt». Such a pick is set aside for this
-             * pack only; a newer Java than required is still the player's call.
-             */
-            let pick = java_pick.filter(|p| match java_major_at(p) {
-                Some(m) if u64::from(m) >= spec.java_major => true,
-                found => {
-                    warn(
-                        &app,
-                        &format!(
-                            "Выбранная Java {} не подходит сборке — ей нужна Java {}. Запускаем на своей",
-                            found.map(|m| m.to_string()).unwrap_or_else(|| "неизвестной версии".into()),
-                            spec.java_major
-                        ),
-                    );
-                    false
-                }
-            });
-            let java = match pick {
-                Some(p) => p,
-                None => ensure_java(&app, spec.java_major).await?,
-            };
-            let cp = pack_classpath(&profile, spec)?;
-            let natives = game_dir.join(&spec.natives_dir);
-            let mut extra_jvm = token;
-            extra_jvm.extend(module_path_args(&pack_module_path(&profile, spec)?));
-            if let Some(arg) = lwjgl_library_path_arg(&nested_native_dirs(&natives)) {
-                extra_jvm.push(arg);
-            }
-            let mut v = pack_version_json(spec, &extra_jvm);
-            /*
-             * A pack built on a vanilla version may leave the sounds and
-             * languages out and name the version instead: the objects are the
-             * same for every pack of that version, so they live once in the
-             * shared store rather than inside each archive.
-             */
-            let assets_root = if spec.vanilla_assets.is_empty() {
-                game_dir.join(&spec.assets_dir)
-            } else {
-                let root = game_root_ready()?;
-                let (vid, vjson) = vanilla_meta(&app, &root, &spec.vanilla_assets).await?;
-                if let Some(dir) = ensure_assets(&app, &root, &vjson, &vid).await? {
-                    v["copperGameAssets"] = Value::String(dir.to_string_lossy().to_string());
-                }
-                if spec.asset_index.is_empty() {
-                    v["assetIndex"]["id"] = vjson["assetIndex"]["id"].clone();
-                }
-                root.join("assets")
-            };
-            (v, spec.main_class.clone(), cp, java, assets_root, natives, game_dir.join("libraries"))
-        }
-        None => {
-            let (v, main_class, classpath, java) =
-                install_loader_with_java(&app, &version_id, &loader_id, loader_ver.as_deref(), java_pick).await?;
-            let root = game_root_ready()?;
-            let resolved_vid = v["id"].as_str().unwrap_or(&version_id).to_string();
-            let natives = root.join("versions").join(&resolved_vid).join("natives");
-            let libs = root.join("libraries");
-            (v, main_class, classpath, java, game_root().join("assets"), natives, libs)
-        }
-    };
+    let (v, main_class, classpath, java) =
+        install_loader_with_java(&app, &version_id, &loader_id, loader_ver.as_deref(), java_pick).await?;
+    let root = game_root_ready()?;
+    let resolved_vid = v["id"].as_str().unwrap_or(&version_id).to_string();
+    let natives_dir = root.join("versions").join(&resolved_vid).join("natives");
+    let libraries_dir = root.join("libraries");
+    let assets_root = game_root().join("assets");
     check_cancel()?;
     std::fs::create_dir_all(game_dir.join("mods")).ok();
     if loader_id == "fabric" && !running_games().iter().any(|p| p == &profile) {
@@ -1444,20 +1346,7 @@ pub async fn install_and_launch_in(
         }
     }
     let mut args = build_args(&v, &main_class, &classpath, &nick, &game_dir, &assets_root, &natives_dir, &libraries_dir, &auth);
-    /*
-     * A pack states the memory it was built for. The player's own choice still
-     * wins inside those bounds; outside them the pack's number is used, because
-     * «не хватило памяти» on a paid build reads as a broken build.
-     */
-    let mut ram = tuned_ram_mb(&profile, ram_mb);
-    if let Some(spec) = &pack {
-        if spec.min_ram_mb > 0 && ram < spec.min_ram_mb {
-            ram = spec.min_ram_mb;
-        }
-        if spec.max_ram_mb > 0 && ram > spec.max_ram_mb {
-            ram = spec.max_ram_mb;
-        }
-    }
+    let ram = tuned_ram_mb(&profile, ram_mb);
     args.insert(0, format!("-Xmx{}M", ram));
     if let Some(a) = agent { args.insert(1, a); }
     if let Some(p) = prefetched { args.insert(1, p); }
@@ -1479,7 +1368,7 @@ pub async fn install_and_launch_in(
     // Профиль GC режима «Буст FPS» встаёт левее пользовательских аргументов:
     // у JVM выигрывает последний одноимённый флаг, поэтому свой -XX игрока
     // остаётся сильнее нашего.
-    let boost_on = pack.is_none() && settings["fpsBoost"].as_bool().unwrap_or(false);
+    let boost_on = settings["fpsBoost"].as_bool().unwrap_or(false);
     if boost_on {
         let own = settings["jvmArgs"].as_str().unwrap_or("");
         let taken: Vec<&str> = own.split_whitespace().collect();
@@ -1656,9 +1545,6 @@ pub async fn install_and_launch_in(
                     }
                 }
                 let failure = early_exit_message(status.code(), &log);
-                // Проверочная версия узнаёт о своём падении здесь же: «не
-                // открылась вовсе» — самый важный из ответов, ради которых её ставили.
-                report_review_launch(&profile, false, &failure).await;
                 return Err(failure);
             }
         }
@@ -1677,12 +1563,9 @@ pub async fn install_and_launch_in(
     if let Ok(mut v) = RUNNING.lock() {
         v.push((profile.clone(), pid));
     }
-    if let Some(spec) = pack.as_ref().filter(|s| s.needs_token && !s.slug.is_empty()) {
-        tauri::async_runtime::spawn(watch_pack_access(app.clone(), profile.clone(), spec.slug.clone(), pid));
-    }
     std::thread::spawn(move || {
         let _media = media;
-        let (status, evidence, elapsed) = watch_session(&mut child, start, pid, &pname, &server_now, &app2, |status| {
+        let (status, evidence, _) = watch_session(&mut child, start, pid, &pname, &server_now, &app2, |status| {
             if status.is_ok() {
                 wait_log_readers(&readers, LOG_DRAIN_WAIT);
                 crash_evidence(&gdir, start_wall)
@@ -1701,13 +1584,6 @@ pub async fn install_and_launch_in(
             Ok(s) => !s.success() || super::crashcause::reports_crash(&log_text),
             Err(_) => false,
         };
-        let review_ok = (status.is_ok() && !crashed) || elapsed >= LAUNCH_CHECK_ALIVE;
-        if review_ok {
-            let checked = pname.clone();
-            tauri::async_runtime::spawn(async move {
-                report_review_launch(&checked, true, &format!("сессия {} с", elapsed)).await;
-            });
-        }
         if was_stopped(pid) {
             return;
         }
@@ -1761,13 +1637,6 @@ pub async fn install_and_launch_in(
                 "game-crash",
                 diagnose(&pname, &reason, &tail, &log_text).classified(kind, cause).with_log_file(log_file),
             );
-            if !review_ok {
-                let checked = pname.clone();
-                let why = reason.clone();
-                tauri::async_runtime::spawn(async move {
-                    report_review_launch(&checked, false, &why).await;
-                });
-            }
         }
     });
     emit(&app, "launch", 100.0, "Игра запущена");

@@ -3,10 +3,9 @@ import { Icon } from './Icon'
 import { BuildIcon } from './playhub/BuildIcon'
 import { ContextMenu, type ContextItem } from './ContextMenu'
 import { LOADER_NAME, fmtPlaytime, whenText } from '../lib/format'
-import { useGuarded, useProfiles } from '../state/profiles'
-import { openBuildSettings, openBuildShare, type InstanceTab } from '../state/instance'
+import { useProfiles } from '../state/profiles'
+import { openBuildSettings, type InstanceTab } from '../state/instance'
 import { realLaunch } from '../lib/launch'
-import { useLobby } from '../state/lobbyMode'
 import { useGame } from '../state/game'
 import { uiConfirm } from '../state/confirm'
 import { showToast } from '../state/ui'
@@ -59,26 +58,11 @@ export function BuildCard({
     })
   }
 
-  // Запуск сборки — тоже выбор режима: лобби вернёт в неё, как Fortnite
-  // возвращает в последний режим.
-  const play = () => {
-    useLobby.getState().pick({ kind: 'build', name: p.name })
-    realLaunch(p.name)
-  }
+  const play = () => realLaunch(p.name)
 
-  const guarded = useGuarded(p.name)
   const allItems: ContextItem[] = [
     { id: 'play', label: running ? 'Запустить ещё копию' : 'Играть', icon: 'i-play', onPick: () => play() },
     { id: 'rename', label: 'Переименовать', icon: 'i-edit', separated: true, onPick: () => go('opts', true) },
-    {
-      id: 'share',
-      label: 'Поделиться',
-      icon: 'i-link',
-      onPick: () => {
-        setSelected(p.name)
-        openBuildShare(p.name)
-      },
-    },
     { id: 'content', label: 'Контент', icon: 'i-blocks', onPick: () => go('content') },
     { id: 'worlds', label: 'Миры и серверы', icon: 'i-server', onPick: () => go('worlds') },
     { id: 'shots', label: 'Скриншоты', icon: 'i-image', onPick: () => go('shots') },
@@ -102,7 +86,7 @@ export function BuildCard({
     },
     { id: 'delete', label: 'Удалить сборку', icon: 'i-trash', danger: true, separated: true, onPick: remove },
   ]
-  const items = guarded ? allItems.filter((i) => i.id !== 'folder') : allItems
+  const items = allItems
 
   return (
     <>

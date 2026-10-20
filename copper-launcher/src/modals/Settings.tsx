@@ -37,15 +37,11 @@ import { refreshProfiles } from '../state/profiles'
 import type { SettingsTab } from '../state/ui'
 import { showToast,useUi } from '../state/ui'
 import { useUpdate } from '../state/update'
-// Наличие аккаунта берём из стора, а не вызовом hasCopperAccount(): вызов не
-// реактивен, и вкладка «Приватность», открытая до готовности хранилища сессий
-// (или до входа в аккаунт), навсегда застревала на «Нужен аккаунт Copper».
 import type { Accent } from '../lib/accent'
 import { accentFromHex,computeAccent,paintAccent,saveAccent,withColorFade } from '../lib/accent'
 import { copyText } from '../lib/clipboard'
 import { buildDiagnostics } from '../lib/diag'
-import { DUO_INVITE_OPTIONS,type DuoInvites } from '../lib/duoEmotes'
-import { loadPrivacy,usePrivacy } from '../lib/privacy'
+
 import type { LaunchWindowMode } from '../lib/window'
 import {
 hasTray,
@@ -56,8 +52,7 @@ setRestoreOnGameExit,
 setTrayClose,
 trayCloseEnabled,
 } from '../lib/window'
-import { useHasCopper } from '../state/auth'
-import { startTour } from '../state/tour'
+
 import type { PerfMode } from '../state/viewPrefs'
 import { TAB_MS_DEFAULT,useViewPrefs } from '../state/viewPrefs'
 
@@ -153,8 +148,7 @@ function initialSec(): SecId {
   }
 }
 
-/// Тумблеры приватности профиля. Те же поля правятся на copper.net —
-/// подписи держим близкими к сайту, чтобы человек узнавал настройку.
+
 
 
 
@@ -169,7 +163,6 @@ export function Settings({ on }: { on: boolean }) {
   const [accent, setAccent] = useState(initialAccent)
   const [customHex, setCustomHex] = useState(initialCustomHex)
   const [pickerOpen, setPickerOpen] = useState(false)
-  
   const showSnapshots = useMcVersionList((s) => s.show)
   const [cacheMb, setCacheMb] = useState<number | null>(null)
   const [clearing, setClearing] = useState(false)
@@ -179,12 +172,7 @@ export function Settings({ on }: { on: boolean }) {
   const [backAfterGame, setBackAfterGame] = useState(restoreOnGameExit)
   const [tray, setTray] = useState(hasTray)
   const [autostart, setAutostartOn] = useState(true)
-  
   const [discord, setDiscord] = useState(() => localStorage.getItem('m-discord') !== '0')
-  
-  
-  
-  
   const [ver, setVer] = useState('')
   const [diagBusy, setDiagBusy] = useState(false)
   const [diagText, setDiagText] = useState('')
@@ -238,22 +226,7 @@ export function Settings({ on }: { on: boolean }) {
     if (c) c.scrollTop = 0
   }
 
-  // Приватность серверная и общая с сайтом: при открытии раздела перечитываем
-  // её, чтобы увидеть значение, выставленное на copper.net с другого места.
-  const privacy = usePrivacy()
-  const hasCopper = useHasCopper()
-  useEffect(() => {
-    if (!on || !hasCopper) return
-    void loadPrivacy(true)
-  }, [on, hasCopper])
 
-  const pickDuoInvites = (value: DuoInvites) => {
-    if (value === privacy.settings.duoInvites || privacy.saving === 'duoInvites') return
-    privacy
-      .patch({ duoInvites: value })
-      .then(() => showToast('Эмоции вдвоём: ' + (DUO_INVITE_OPTIONS.find(([v]) => v === value)?.[1] ?? '').toLowerCase()))
-      .catch(() => showToast('Не удалось сохранить настройку приглашений', 'error'))
-  }
 
 
 
@@ -311,7 +284,6 @@ export function Settings({ on }: { on: boolean }) {
                 }}
               ></button>
             ))}
-            
             <span className="s2-sw-wrap">
               <button
                 aria-label="Свой цвет"
@@ -335,11 +307,9 @@ export function Settings({ on }: { on: boolean }) {
             </span>
           </div>
         </Group>
-        
       </Block>
 
 
-      
 
       <Block keys="анимация движение персонаж танцует фон переход между вкладками скорость плавность оптимизация качество слабый пк производительность лаги fps">
         <Group title="Анимация">
@@ -387,11 +357,9 @@ export function Settings({ on }: { on: boolean }) {
     </>
   )
 
-  
 
   const game = (
     <>
-      
 
       <Group title="Во время игры">
         <Row title="Лаунчер при запуске игры" keys="окно свернуть трей оставить">
@@ -419,7 +387,6 @@ export function Settings({ on }: { on: boolean }) {
             }}
           />
         </Row>
-        
         <Row title="Снапшоты в списке версий" keys="версии тестовые снапшоты">
           <Toggle
             id="setSnapshots"
@@ -585,27 +552,13 @@ export function Settings({ on }: { on: boolean }) {
         ))}
       </Group>
 
-      
     </>
   )
 
   const account = (
     <>
-      
 
-      
 
-      {hasCopper ? (
-        <Group title="Эмоции вдвоём">
-          <Row title="Кто может звать" keys="эмоции вдвоём приглашение приватность друзья">
-            {!privacy.loaded && privacy.loading ? (
-              <span className="skel" style={{ width: '180px', height: '28px' }}></span>
-            ) : (
-              <Segs<DuoInvites> value={privacy.settings.duoInvites} options={DUO_INVITE_OPTIONS} onPick={pickDuoInvites} />
-            )}
-          </Row>
-        </Group>
-      ) : null}
 
       <Group title="Снаружи">
         <Row title="Активность в Discord" keys="дискорд статус rich presence приватность">
@@ -721,11 +674,6 @@ export function Settings({ on }: { on: boolean }) {
               setTrayClose(next)
             }}
           />
-        </Row>
-        <Row title="Гайд по лаунчеру" keys="обучение тур подсказки помощь">
-          <button className="btn sm secondary" onClick={startTour}>
-            Показать
-          </button>
         </Row>
         <Row
           title="Отчёт для поддержки"

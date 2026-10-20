@@ -156,14 +156,6 @@ pub(crate) fn client() -> reqwest::Client {
     shared_client(&CLIENT)
 }
 
-/// Второй пул соединений — для дублирующего запроса (hedged request, «The Tail at
-/// Scale»): повтор по тому же пулу ушёл бы в тот же зависший сокет HTTP/2.
-static SPARE: std::sync::Mutex<Option<Shared>> = std::sync::Mutex::new(None);
-
-pub(crate) fn spare_client() -> reqwest::Client {
-    shared_client(&SPARE)
-}
-
 fn shared_client(cell: &std::sync::Mutex<Option<Shared>>) -> reqwest::Client {
     let mut slot = cell.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(shared) = slot.as_ref().filter(|s| s.checked.elapsed() < PROXY_RECHECK) {
@@ -188,20 +180,6 @@ mod tls_roots_tests {
         assert!(super::build_client(true).is_ok());
     }
 
-    #[test]
-    #[ignore]
-    fn copper_api_reachable() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let status = rt.block_on(async {
-            super::client()
-                .get("copper-disabled://removed-service/v2/rating/servers?limit=1&offset=0&sort=rating")
-                .send()
-                .await
-                .map(|r| r.status().as_u16())
-                .map_err(|e| super::net_err(&e))
-        });
-        assert_eq!(status, Ok(200));
-    }
 }
 
 /// reqwest's Display only yields "error sending request for url"; the actual
@@ -1763,16 +1741,16 @@ PK"),
     /// минутное окно»: короткая пауза сжигала попытки внутри того же окна.
     #[test]
     fn rate_limit_waits_longer_than_a_dropped_connection() {
-        let throttled = format!("copper-disabled://removed-service/v2/launcher/dl → {}", reqwest::StatusCode::TOO_MANY_REQUESTS);
+        let throttled = format!("https://example.com/dl → {}", reqwest::StatusCode::TOO_MANY_REQUESTS);
         assert!(retry_pause(1, &throttled) >= Duration::from_secs(5), "429 должен ждать окно лимита");
         assert_eq!(retry_pause(1, "x: обрыв загрузки (нет связи (reset))"), Duration::from_millis(400), "обрыв повторяется сразу");
     }
 
-    /// The backend tells launcher releases apart by this header in its logs; a fixed
-    /// "1.0" made every build look the same.
+    /// Mirrors tell launcher releases apart by this header; a fixed "1.0" made
+    /// every build look the same.
     #[test]
     fn user_agent_carries_the_real_app_version() {
-        let expected = format!("CopperLauncher/{} (+copper-disabled://removed-service)", env!("CARGO_PKG_VERSION"));
+        let expected = format!("CopperLauncher/{}", env!("CARGO_PKG_VERSION"));
         assert_eq!(UA, expected, "User-Agent обязан нести версию из Cargo.toml, которую CI ставит при выпуске");
         assert_ne!(env!("CARGO_PKG_VERSION"), "", "пустая версия дала бы «CopperLauncher/» без номера");
     }

@@ -281,19 +281,19 @@ mod tests {
     fn external_url_verdicts() {
         // (input, should be accepted, why this case exists)
         let cases: &[(&str, bool, &str)] = &[
-            ("copper-disabled://removed-service/news", true, "plain https must keep working"),
-            ("copper-disabled://removed-service/news", true, "plain http must keep working"),
-            ("copper-disabled://removed-service/news", true, "scheme comparison must be case-insensitive"),
-            ("copper-disabled://removed-service/p?a=1&b=2", true, "query strings must survive intact"),
+            ("https://example.com/news", true, "plain https must keep working"),
+            ("http://example.com/news", true, "plain http must keep working"),
+            ("HTTPS://EXAMPLE.COM/news", true, "scheme comparison must be case-insensitive"),
+            ("https://example.com/p?a=1&b=2", true, "query strings must survive intact"),
             ("http:foo", true, "scheme-relative http is normalised to a real host by the URL parser"),
-            ("  copper-disabled://removed-service/  ", true, "surrounding whitespace must be trimmed, not rejected"),
+            ("  https://example.com/  ", true, "surrounding whitespace must be trimmed, not rejected"),
             ("javascript:alert(1)", false, "javascript: would execute code in the opening context"),
             ("file:///C:/Windows", false, "file: would expose the local filesystem"),
             ("data:text/html,<script>alert(1)</script>", false, "data: can carry inline HTML/JS"),
             ("http:///", false, "http with an empty host is not a real destination"),
             ("copper://deeplink", false, "our own deep-link scheme must not be re-entered from a link"),
-            ("copper-disabled://removed-service/\r\nHeader: x", false, "CR/LF enable injection into whatever consumes the URL"),
-            ("copper-disabled://removed-service/\0evil", false, "NUL truncates the URL in C-string based platform APIs"),
+            ("https://example.com/\r\nHeader: x", false, "CR/LF enable injection into whatever consumes the URL"),
+            ("https://example.com/\0evil", false, "NUL truncates the URL in C-string based platform APIs"),
             ("", false, "empty input is not a URL"),
             ("   ", false, "whitespace-only input is not a URL"),
         ];
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn query_is_not_truncated_at_first_ampersand() {
-        let parsed = validate_external_url("copper-disabled://removed-service/p?a=1&b=2")
+        let parsed = validate_external_url("https://example.com/p?a=1&b=2")
             .expect("a normal https URL with two query parameters must be accepted");
         assert_eq!(
             parsed.query(),
@@ -324,12 +324,12 @@ mod tests {
 
     #[test]
     fn accepted_url_keeps_its_host_and_scheme() {
-        let parsed = validate_external_url("copper-disabled://removed-service/news")
+        let parsed = validate_external_url("HTTPS://EXAMPLE.COM/news")
             .expect("upper-case scheme and host must be accepted");
         assert_eq!(parsed.scheme(), "https", "scheme must normalise to lower case");
         assert_eq!(
             parsed.host_str(),
-            Some("removed-service.invalid"),
+            Some("example.com"),
             "host must be preserved so the user lands on the site they clicked",
         );
     }

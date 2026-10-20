@@ -932,11 +932,6 @@ fn version_line(stderr: &str) -> Option<String> {
     stderr.lines().map(str::trim).find(|l| parse_major(l).is_some()).map(str::to_string)
 }
 
-/// Major version of the Java at `path`, read from `java -version`.
-pub(crate) fn java_major_at(path: &Path) -> Option<u32> {
-    parse_major(&java_version_of(path)?)
-}
-
 pub(crate) fn java_version_of(path: &Path) -> Option<String> {
     let out = quiet(&mut Command::new(path)).arg("-version").output().ok()?;
     version_line(&String::from_utf8_lossy(&out.stderr))

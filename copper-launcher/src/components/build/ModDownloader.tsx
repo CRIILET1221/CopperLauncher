@@ -10,28 +10,22 @@ import { renderMarkdown } from '../../lib/markdown'
 import { tidyBody } from '../../modals/projectView'
 import { showToast } from '../../state/ui'
 import { DEMO_USER } from '../../lib/demo'
-import { blocksToMarkdown } from '../../lib/copperCatalog'
-import { displayName, loadItem, loadListing } from '../catalog/site'
-import type { SiteSlug } from '../catalog/site'
-import { pickFile } from '../catalog/paid'
-import { installCatalogFile } from '../../ipc/commands'
 import '../../styles/pixel/moddl.css'
 
 /*
  * «Добавить моды» как в Prism Launcher (владелец 07.10.2026: «прям один в один»):
- * слева источник — первым наш каталог Copper (названия и описания по-русски,
- * файлы с нашего зеркала), за ним Modrinth и CurseForge, посередине поиск и выдача, справа
+ * слева источник — Modrinth и CurseForge, посередине поиск и выдача, справа
  * описание выбранного, версия и «Выбрать для загрузки». Выбранное копится в
  * очереди; «Проверить и подтвердить» показывает список вместе с зависимостями,
  * и только «ОК» ставит всё разом. Выдача по умолчанию — под версию и загрузчик
  * сборки (как фильтр Prism), выключается кнопкой «Фильтр».
  */
 
-type Source = 'copper' | 'modrinth' | 'curseforge'
-/** pids — как вещь записана в сборке (`copper:slug`, `cf:id`, id Modrinth): по ним «уже в сборке». */
+type Source = 'modrinth' | 'curseforge'
+/** pids — как вещь записана в сборке (`cf:id`, id Modrinth): по ним «уже в сборке». */
 type Hit = { id: string; slug: string; title: string; author: string; desc: string; icon: string | null; downloads: number; pids: string[] }
-/** deps — Modrinth id обязательных зависимостей; reqs — обязательные из нашего каталога (slug). */
-type Ver = { id: string; name: string; file: string; deps: string[]; date: string; type: string; pid?: string; sha1?: string | null; reqs?: { slug: string; title: string }[] }
+/** deps — Modrinth id обязательных зависимостей. */
+type Ver = { id: string; name: string; file: string; deps: string[]; date: string; type: string; pid?: string }
 type Queued = { source: Source; id: string; slug: string; title: string; icon: string | null; ver: Ver }
 type Fit = { ver: boolean; loader: boolean }
 type Dep = { source: Source; id: string; title: string; icon: string | null; ver: Ver | null; by: string; on: boolean }
@@ -92,33 +86,6 @@ async function mrVersions(id: string, kind: string, build: Profile, fit: Fit): P
   }))
 }
 
-const SECTION: Record<string, SiteSlug> = { mod: 'mods', resourcepack: 'texture-packs', shader: 'shaders', datapack: 'data-packs' }
-const CAT_SORT: Record<string, 'recommended' | 'popular' | 'new'> = { relevance: 'recommended', downloads: 'popular', follows: 'popular', newest: 'new', updated: 'new' }
-
-async function catSearch(q: string, kind: string, build: Profile, fit: Fit, sort: string, offset: number): Promise<{ hits: Hit[]; total: number }> {
-  const got = await loadListing({
-    section: SECTION[kind] || 'mods',
-    q: q || null,
-    version: fit.ver ? build.version : null,
-    loader: fit.loader && kind === 'mod' ? loaderId(build) : null,
-    sort: q ? 'recommended' : CAT_SORT[sort] || 'recommended',
-    page: Math.floor(offset / 20) + 1,
-    perPage: 20,
-  })
-  return {
-    total: got.total,
-    hits: got.items.map((c) => ({
-      id: c.slug,
-      slug: c.slug,
-      title: displayName(c.title),
-      author: c.author || '',
-      desc: c.summary,
-      icon: c.icon,
-      downloads: c.sourceDownloads || c.downloads || 0,
-      pids: ['copper:' + c.slug, ...(c.curseforgeId ? ['cf:' + c.curseforgeId] : [])],
-    })),
-  }
-}
 
 /** `fn` для каждого элемента, не больше `n` разом; порядок результата — как у входа. */
 async function inBatches<T, R>(list: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -134,20 +101,6 @@ async function inBatches<T, R>(list: T[], n: number, fn: (x: T) => Promise<R>): 
   return out
 }
 
-/** Файлы материала из нашего каталога — версии для выбора; первая — подходящая сборке. */
-async function catVersions(slug: string, kind: string, build: Profile, fit: Fit): Promise<{ body: string; vers: Ver[] }> {
-  const it = await loadItem(slug)
-  const reqs = (it.dependencies?.requires || []).filter((d) => d.slug).map((d) => ({ slug: d.slug!, title: displayName(d.title) }))
-  const files = (it.files || []).filter(
-    (f) => (!fit.ver || !f.gameVersions?.length || f.gameVersions.includes(build.version)) && (!fit.loader || kind !== 'mod' || !f.loaders?.length || f.loaders.includes(loaderId(build))),
-  )
-  const best = pickFile(files, { version: build.version, loader: loaderId(build) }, kind)
-  const sorted = best ? [best.file, ...files.filter((f) => f.id !== best.file.id)] : files
-  return {
-    body: blocksToMarkdown((it.description as never) || null) || it.summary || '',
-    vers: sorted.map((f) => ({ id: f.id, name: f.fileName.replace(/\.(jar|zip)$/i, ''), file: f.fileName, deps: [], date: f.releasedAt || '', type: 'release', sha1: f.sha1, reqs })),
-  }
-}
 
 async function cfFind(q: string, kind: string, build: Profile, fit: Fit, sort: string, offset: number): Promise<{ hits: Hit[]; total: number }> {
   const got = await cfSearch(q, kind, fit.ver ? build.version : '', fit.loader && kind === 'mod' ? loaderId(build) : '', offset, 0, CF_SORT[sort] ?? 0)
@@ -206,7 +159,7 @@ export function ModDownloader({
       setErr('CurseForge ищет из приложения')
       return
     }
-    ;(source === 'copper' ? catSearch : source === 'modrinth' ? mrSearch : cfFind)(q.trim(), kind, build, fit, sort, offset)
+    ;(source === 'modrinth' ? mrSearch : cfFind)(q.trim(), kind, build, fit, sort, offset)
       .then((r) => {
         if (my !== seq.current) return
         setTotal(r.total)
@@ -233,16 +186,7 @@ export function ModDownloader({
     setVerId('')
     if (!cur) return
     let live = true
-    if (source === 'copper') {
-      void catVersions(cur.slug, kind, build, fit)
-        .then((r) => {
-          if (!live) return
-          setBody(r.body || cur.desc)
-          setVers(r.vers)
-          setVerId(queue.get(qkey(cur))?.ver.id || r.vers[0]?.id || '')
-        })
-        .catch(() => live && (setBody(cur.desc), setVers([])))
-    } else if (source === 'modrinth') {
+    if (source === 'modrinth') {
       void fetch(MR + '/project/' + cur.id)
         .then((r) => (r.ok ? r.json() : null))
         .then((p: { body?: string } | null) => live && setBody(p?.body || cur.desc))
@@ -291,18 +235,7 @@ export function ModDownloader({
     const inQueue = new Set([...queue.values()].map((x) => x.id))
     const need = new Map<string, string>()
     for (const x of queue.values()) for (const d of x.ver.deps) if (!have.has(d) && !inQueue.has(d) && !need.has(d)) need.set(d, x.title)
-    let deps: Dep[] = []
-    // Наш каталог: обязательные из карточки материала, файл — под сборку.
-    const catNeed = new Map<string, { title: string; by: string }>()
-    for (const x of queue.values())
-      for (const d of x.ver.reqs || []) if (!have.has('copper:' + d.slug) && !haveTitle.has(norm(d.title)) && !inQueue.has(d.slug) && !catNeed.has(d.slug)) catNeed.set(d.slug, { title: d.title, by: x.title })
-    // Разом, а не по одному: у пятидесяти модов проверка шла полминуты (10.10.2026).
-    deps.push(
-      ...(await inBatches([...catNeed], 6, async ([slug, d]) => {
-        const [r, it] = await Promise.all([catVersions(slug, kind, build, { ver: true, loader: true }).catch(() => null), loadItem(slug).catch(() => null)])
-        return { source: 'copper' as Source, id: slug, title: d.title, icon: it?.icon || null, ver: r?.vers[0] || null, by: d.by, on: !!r?.vers[0] }
-      })),
-    )
+    const deps: Dep[] = []
     if (need.size) {
       try {
         const r = await fetch(MR + '/projects?ids=' + encodeURIComponent(JSON.stringify([...need.keys()])))
@@ -335,8 +268,8 @@ export function ModDownloader({
       }
       onDone(
         [
-          ...picks.map((x) => ({ t: x.title, ic: x.icon, v: x.ver, id: x.source === 'copper' ? 'copper:' + x.id : x.ver.pid || x.id })),
-          ...deps.map((d) => ({ t: d.title, ic: d.icon, v: d.ver!, id: d.source === 'copper' ? 'copper:' + d.id : d.ver?.pid || d.id })),
+          ...picks.map((x) => ({ t: x.title, ic: x.icon, v: x.ver, id: x.ver.pid || x.id })),
+          ...deps.map((d) => ({ t: d.title, ic: d.icon, v: d.ver!, id: d.ver?.pid || d.id })),
         ].map((x) => ({
           name: x.v.file || x.t + '.jar',
           enabled: true,
@@ -359,12 +292,10 @@ export function ModDownloader({
         ...deps.filter((d) => d.source === 'modrinth').map((d) => ({ source: 'modrinth', project_id: d.id, version_id: d.ver!.id })),
       ]
       const failed: string[] = []
-      const cat = [...picks.filter((x) => x.source === 'copper').map((x) => ({ slug: x.id, title: x.title, ver: x.ver })), ...review.filter((d) => d.on && d.ver && d.source === 'copper').map((d) => ({ slug: d.id, title: d.title, ver: d.ver! }))]
-      // Три источника — одновременно, внутри каждого — по нескольку файлов разом
+      // Источники — одновременно, внутри каждого — по нескольку файлов разом
       // (было строго по одному: пятьдесят модов ставились полминуты, владелец 10.10.2026).
       const cfPicks = picks.filter((p) => p.source === 'curseforge')
       await Promise.all([
-        inBatches(cat, 6, (c) => installCatalogFile(build.name, kind, c.slug, c.ver.id, c.title, c.ver.sha1).catch((e) => void failed.push(c.title + ': ' + e))),
         mr.length ? installDepItems(build.name, kind, mr).then((r) => void failed.push(...r.failed)).catch((e) => void failed.push('' + e)) : null,
         inBatches(cfPicks, 4, (x) => cfInstall(Number(x.id), build.version, build.name, kind, Number(x.ver.id)).catch((e) => void failed.push(x.title + ': ' + e))),
       ])
@@ -413,16 +344,14 @@ export function ModDownloader({
           <nav className="mdl-src" aria-label="Источник">
             {(['modrinth'] as Source[]).map((s) => (
               <button key={s} type="button" className={'mdl-src-btn' + (source === s ? ' on' : '')} onClick={() => (setSource(s), setCur(null))}>
-                {s === 'copper' ? (
-                  <img src="/copper-brand-v2.png" alt="" />
-                ) : s === 'modrinth' ? (
+                {s === 'modrinth' ? (
                   <img src="https://modrinth.com/favicon.ico" alt="" />
                 ) : (
                   <span className="mdl-cf">
                     <PxIcon name="flame" size={26} />
                   </span>
                 )}
-                <span>{s === 'copper' ? 'Каталог' : s === 'modrinth' ? 'Modrinth' : 'CurseForge'}</span>
+                <span>{s === 'modrinth' ? 'Modrinth' : 'CurseForge'}</span>
               </button>
             ))}
           </nav>
@@ -585,7 +514,7 @@ export function ModDownloader({
                     <span className="mdl-ic">{x.icon ? <img src={x.icon} alt="" /> : <PxIcon name="box" size={20} />}</span>
                     <span className="mdl-txt">
                       <b>{x.title}</b>
-                      <span>{[x.ver.file || x.ver.name, x.source === 'copper' ? 'Каталог Copper' : x.source === 'modrinth' ? 'Modrinth' : 'CurseForge', TYPE_RU[x.ver.type] || x.ver.type].join(' · ')}</span>
+                      <span>{[x.ver.file || x.ver.name, x.source === 'modrinth' ? 'Modrinth' : 'CurseForge', TYPE_RU[x.ver.type] || x.ver.type].join(' · ')}</span>
                     </span>
                   </li>
                 ))}

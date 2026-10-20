@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { getPlayStats, labelServer } from '../ipc/commands'
 import type { PlayStats } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
-import { useServers } from './servers'
 import { canonAddr } from '../lib/serverAddr'
 import { DEMO_USER } from '../lib/demo'
 
@@ -97,9 +96,7 @@ export function serverNameFor(addr: string): string {
   const key = canonAddr(addr)
   if (!key) return ''
   const known = usePlayStats.getState().stats.servers.find((s) => canonAddr(s.key) === key)
-  if (known && known.label) return known.label
-  const rated = useServers.getState().list.find((s) => canonAddr(s.ip) === key)
-  return (rated && rated.name) || ''
+  return (known && known.label) || ''
 }
 
 export function rememberServerName(addr: string, name: string) {

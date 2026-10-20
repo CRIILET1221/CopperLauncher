@@ -24,9 +24,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const RETRY_AFTER: Duration = Duration::from_secs(30);
-const SITE_URL: &str = "copper-disabled://removed-service/launcher";
-const DISCORD_URL: &str = "https://github.com/CRIILET1221/CopperLauncher";
-const PROFILE_BASE: &str = "copper-disabled://removed-service/u/";
+const SOURCE_URL: &str = "https://github.com/CRIILET1221/CopperLauncher";
 
 /// Longest a caller waits for the socket before it is told what is known so
 /// far. The frontend gives presence two seconds before it beats without the
@@ -40,18 +38,6 @@ const OP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Every abandoned worker leaks a thread, so replacing one cannot be endless.
 /// After this many, presence stays off until the launcher is restarted.
 const MAX_RESPAWNS: u64 = 3;
-
-fn profile_url(slug: &str) -> Option<String> {
-    let ok = (1..=48).contains(&slug.len())
-        && slug
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-    if ok {
-        Some(format!("{}{}", PROFILE_BASE, slug.to_ascii_lowercase()))
-    } else {
-        None
-    }
-}
 
 fn app_id() -> String {
     std::env::var("COPPER_DISCORD_APP_ID").unwrap_or_default()
@@ -67,7 +53,6 @@ static CONNECTED: AtomicBool = AtomicBool::new(false);
 static LAST_TRY: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_ERROR: Mutex<String> = Mutex::new(String::new());
 static LAST_OK: Mutex<String> = Mutex::new(String::new());
-static LAST_SLUG: Mutex<String> = Mutex::new(String::new());
 /// Discord account the local client is signed in as, taken from the READY
 /// frame. The exp bridge pays for hours only while the launcher activity is
 /// actually visible on the player's own Discord, so the server has to know
@@ -102,8 +87,6 @@ pub struct Presence {
     pub playing: bool,
     pub large_image: String,
     pub large_text: String,
-    pub join_url: String,
-    pub profile_slug: String,
 }
 
 enum Work {
@@ -207,7 +190,6 @@ fn enqueue(job: Job) -> bool {
 }
 
 pub async fn set_activity(presence: Presence) {
-    *lock(&LAST_SLUG) = presence.profile_slug.clone();
     submit(Work::Set(Box::new(presence))).await;
 }
 
@@ -231,11 +213,9 @@ fn worker(generation: u64, rx: Receiver<Job>) {
             Work::Set(presence) => apply(&mut client, &mut since, &presence),
             Work::Reconnect => {
                 *lock(&LAST_TRY) = None;
-                let slug = lock(&LAST_SLUG).clone();
                 let presence = Presence {
                     details: "В лаунчере".into(),
                     state: "Copper Launcher".into(),
-                    profile_slug: slug,
                     ..Presence::default()
                 };
                 apply(&mut client, &mut since, &presence);
@@ -321,13 +301,7 @@ fn handshake(c: &mut DiscordIpcClient, id: &str) -> Result<String, Box<dyn std::
     Ok(val["data"]["user"]["id"].as_str().unwrap_or_default().to_string())
 }
 
-const JOIN_PREFIX: &str = "copper-disabled://removed-service/join?";
-
 /// `large_image` may be an https URL: Discord proxies external images itself.
-/// `join_url` replaces the download button while the player is on a server; it is
-/// restricted to our own join page because the value comes from the webview.
-/// `profile_slug` is a slug, not a URL: the address is built here so the webview
-/// cannot point the button anywhere else. Empty slug keeps the Discord button.
 fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Presence) {
     if !ensure_connected(client) {
         return;
@@ -347,22 +321,7 @@ fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Pre
 
     let big = if p.large_image.starts_with("https://") { p.large_image.as_str() } else { "logo" };
     let big_text = if p.large_text.is_empty() { "Copper Launcher" } else { p.large_text.as_str() };
-    let join_ok = p.playing && p.join_url.starts_with(JOIN_PREFIX) && p.join_url.len() <= 512;
-    let profile = profile_url(&p.profile_slug);
-    let buttons = if join_ok {
-        vec![
-            activity::Button::new("Зайти на сервер", p.join_url.as_str()),
-            activity::Button::new("Скачать лаунчер", SITE_URL),
-        ]
-    } else {
-        vec![
-            activity::Button::new("Скачать лаунчер", SITE_URL),
-            match profile.as_deref() {
-                Some(url) => activity::Button::new("Профиль Copper", url),
-                None => activity::Button::new("Исходники Copper", DISCORD_URL),
-            },
-        ]
-    };
+    let buttons = vec![activity::Button::new("Исходники Copper", SOURCE_URL)];
     let mut act = activity::Activity::new()
         .activity_type(ActivityType::Playing)
         .details(&p.details)
@@ -408,28 +367,6 @@ fn apply(client: &mut Option<DiscordIpcClient>, since: &mut Option<i64>, p: &Pre
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn profile_button_points_only_at_our_profile_page() {
-        let cases: [(&str, Option<&str>); 7] = [
-            ("danielgrash", Some("copper-disabled://removed-service/u/danielgrash")),
-            ("DanielGrash", Some("copper-disabled://removed-service/u/danielgrash")),
-            ("some_nick-2", Some("copper-disabled://removed-service/u/some_nick-2")),
-            ("", None),
-            ("../admin", None),
-            ("a b", None),
-            ("evil.com/x", None),
-        ];
-        for (slug, want) in cases {
-            assert_eq!(
-                profile_url(slug).as_deref(),
-                want,
-                "slug «{}» must not escape {}: the value comes from the webview",
-                slug,
-                super::PROFILE_BASE
-            );
-        }
-    }
 
     /// A worker parked in a read that never returns is how the window froze:
     /// nothing may wait on it forever, and an idle worker may never be taken

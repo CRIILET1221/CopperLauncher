@@ -2,15 +2,14 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 let files: string[] = []
 let shareImpl: (profile: string, name: string) => Promise<string> = async (_p, name) =>
-  'https://copper.net/l/' + name
+  'https://mclo.gs/' + name
 
 mock.module('../ipc/commands', () => ({
   listLogs: async () => files,
   shareLog: (profile: string, name: string) => shareImpl(profile, name),
 }))
-mock.module('./diag', () => ({ buildDiagnostics: async () => 'ОС: тестовая' }))
 
-const { buildCrashReport, shareCrashLog } = await import('./crashSupport')
+const { shareCrashLog } = await import('./crashSupport')
 
 // Поддержке нужен лог ЗАПУСКА: в нём видно, на чём оборвалась установка. Игровой
 // latest.log пишет уже сама игра, и при падении на старте его может не быть
@@ -30,13 +29,13 @@ const PICK: Array<[string[], string, string]> = [
 describe('shareCrashLog', () => {
   beforeEach(() => {
     files = []
-    shareImpl = async (_p, name) => 'https://copper.net/l/' + name
+    shareImpl = async (_p, name) => 'https://mclo.gs/' + name
   })
 
   for (const [listing, picked, why] of PICK) {
     test(why, async () => {
       files = listing
-      expect(await shareCrashLog('Выживание')).toBe('https://copper.net/l/' + picked)
+      expect(await shareCrashLog('Выживание')).toBe('https://mclo.gs/' + picked)
     })
   }
 
@@ -58,7 +57,7 @@ describe('shareCrashLog', () => {
   for (const [listing, snapshot, picked, why] of SNAPSHOT) {
     test(why, async () => {
       files = listing
-      expect(await shareCrashLog('Выживание', snapshot)).toBe('https://copper.net/l/' + picked)
+      expect(await shareCrashLog('Выживание', snapshot)).toBe('https://mclo.gs/' + picked)
     })
   }
 
@@ -68,36 +67,3 @@ describe('shareCrashLog', () => {
   })
 })
 
-describe('buildCrashReport', () => {
-  beforeEach(() => {
-    files = ['logs/launcher-latest.log']
-    shareImpl = async (_p, name) => 'https://copper.net/l/' + name
-  })
-
-  const crash = { profile: 'Выживание', reason: 'Exit code 1', tail: '…' }
-
-  test('в отчёте есть сборка, причина, ссылка на лог и данные о системе', async () => {
-    const text = await buildCrashReport(crash)
-    for (const part of ['Выживание', 'Exit code 1', 'https://copper.net/l/logs/launcher-latest.log', 'ОС: тестовая']) {
-      expect(text).toContain(part)
-    }
-  })
-
-  test('в отчёт поддержке уходит ссылка на снимок вылета, а не на текущий лог', async () => {
-    const text = await buildCrashReport({ ...crash, logFile: 'logs/crash-1790000000-42.log' })
-    expect(text).toContain('https://copper.net/l/logs/crash-1790000000-42.log')
-    expect(text).not.toContain('launcher-latest.log')
-  })
-
-  // Проглоченная ошибка выгрузки выглядит как обычный отчёт без строки лога:
-  // оператор не знает, что лога нет, и ждёт его от игрока.
-  test('лог не выгрузился — причина написана в отчёте, а не потеряна', async () => {
-    shareImpl = async () => {
-      throw new Error('нет связи')
-    }
-    const text = await buildCrashReport(crash)
-    expect(text).toContain('Лог: не выгрузился')
-    expect(text).toContain('нет связи')
-    expect(text).toContain('ОС: тестовая')
-  })
-})

@@ -13,11 +13,9 @@ import type { CSSProperties } from 'react'
 import type { FoundInstance, Profile } from '../../ipc/commands'
 import { DEMO_USER } from '../../lib/demo'
 import { plural } from '../../lib/format'
-import { presetName } from '../../lib/versionBuild'
-import type { PopularVersion } from '../../lib/versionBuild'
 import { hasTauri } from '../../ipc/tauri'
 import { usePlayStats } from '../../state/playStats'
-import { useGuarded, useProfiles } from '../../state/profiles'
+import { useProfiles } from '../../state/profiles'
 import { openModal, showToast } from '../../state/ui'
 import { BuildIcon, IconPicker } from './BuildIcon'
 import { hoursText } from './Hours'
@@ -163,7 +161,6 @@ export function BuildMenuItems({
   onTab?: (tab: 'opts', rename: boolean) => void
 }) {
   const go = (rename: boolean) => (onTab ? onTab('opts', rename) : openBuildSettings(name, 'opts', rename))
-  const guarded = useGuarded(name)
   return (
     <>
       <button role="menuitem" data-track="build_rename" onClick={() => (onClose(), go(true))}>
@@ -178,7 +175,7 @@ export function BuildMenuItems({
         <Icon id="i-mo-gear" />
         Настройки
       </button>
-      {hasTauri() && !guarded ? (
+      {hasTauri() ? (
         <button role="menuitem" data-track="build_folder" onClick={() => (onClose(), void openProfileFolder(name).catch(() => {}))}>
           <Icon id="i-mo-folder" />
           Папка
@@ -484,56 +481,6 @@ export function TakeAllCard({ have, bar }: { have: string[]; bar?: boolean }) {
   if (rest.length)
     return <ActCard icon="i-download" title="Забрать всё" meta={foundText(rest)} track="import_take_all" onClick={() => void takeAll(rest)} />
   return <ActCard icon="i-upload" title="Импорт" meta="Файл сборки" track="import" onClick={importFile} />
-}
-
-/**
- * Сборка-заготовка: выглядит как обычная, но на диске её ещё нет — она
- * заводится при первом «Играть» (или выборе в лобби).
- */
-export function PresetCard({
-  v,
-  on,
-  onPick,
-  onPlay,
-}: {
-  v: PopularVersion
-  on: boolean
-  onPick: () => void
-  onPlay: () => void
-}) {
-  const loader = { vanilla: 'Vanilla', fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge', quilt: 'Quilt' }[v.loader]
-  return (
-    <div
-      className={'ph-card ph-mine' + (on ? ' on' : '')}
-      role="button"
-      tabIndex={0}
-      data-sound="nav"
-      data-kind="preset"
-      data-id={v.loader + '-' + v.mc}
-      data-src="hub_card"
-      onClick={onPick}
-      onKeyDown={(e) => e.target === e.currentTarget && e.key === 'Enter' && onPick()}
-    >
-      <span className="ph-card-art ph-mine-art">
-        <BuildIcon icon={null} name={v.loader + ' ' + v.mc} size={72} />
-        <button
-          className="btn sm primary ph-mine-play"
-          data-sound="open"
-          data-track="play"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPlay()
-          }}
-        >
-          <Icon id="i-play" /> Играть
-        </button>
-      </span>
-      <span className="ph-card-body">
-        <b>{presetName(v)}</b>
-        <span className="ph-card-meta">{loader + ' · ' + v.mc}</span>
-      </span>
-    </div>
-  )
 }
 
 /** Порядок: сначала те, в которые играли последними, потом — как в списке сборок. */

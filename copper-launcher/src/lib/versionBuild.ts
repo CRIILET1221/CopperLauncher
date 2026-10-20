@@ -8,7 +8,7 @@ toggleContent
 } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
 import { useProfiles } from '../state/profiles'
-import { MODRINTH_API,api,mirrorAsset } from './api'
+import { MODRINTH_API,mirrorAsset } from './api'
 
 /**
  * Сборка «Minecraft X» для полки версий «Во что играем» (приказ владельца
@@ -162,13 +162,10 @@ async function applyFps(profile: string, on: boolean): Promise<void> {
   for (const file of st.mods) await toggleContent(profile, 'mod', file, on).catch(() => {})
 }
 
-/** Мод косметики Copper: запуск ставит его и сам, здесь — заранее, чтобы первый вход был со скином. */
-async function ensureCosmetics(_profile: string): Promise<void> {}
-
 /**
  * Сборка «Minecraft <version>» на Fabric (до 1.14 — Forge), готовая к запуску. Возвращает имя
- * сборки или null (браузер без ядра, ошибка создания). Моды FPS и косметики —
- * по возможности: их ошибка не мешает играть.
+ * сборки или null (браузер без ядра, ошибка создания). Моды FPS — по
+ * возможности: их ошибка не мешает играть.
  */
 export async function ensureVersionBuild(version: string, opts: { fps: boolean; name?: string }): Promise<string | null> {
   if (!hasTauri()) return null
@@ -182,85 +179,6 @@ export async function ensureVersionBuild(version: string, opts: { fps: boolean; 
   if (!name) return null
   const fps = opts.fps && (await fpsAvailable(version))
   await applyFps(name, fps).catch((e) => console.error('[version-build] fps', e))
-  await ensureCosmetics(name).catch((e) => console.error('[version-build] cosmetics', e))
   return name
 }
 
-export const pvpBuildName = (version: string) => 'Copper PvP ' + version
-
-export const PVP_VERSIONS = ['1.8.9', '1.12.2', '1.20.1', '1.21.11'] as const
-
-export function ensurePvpBuild(version: string): Promise<string | null> {
-  return ensureVersionBuild(version, { fps: true, name: pvpBuildName(version) })
-}
-
-/**
- * Сборки по умолчанию для «Моих сборок» (правка владельца 23.09.2026, 20:05):
- * у кого нет ни одной сборки, сразу видит три готовые — версии, в которые
- * больше всего играют в лаунчере. Список отдаёт бэкенд
- * (GET /launcher/popular-versions); нет ответа — зашитый топ-3 по телеметрии
- * за 30 дней по устройствам (23.09.2026).
- */
-export interface PopularVersion {
-  mc: string
-  loader: 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt'
-}
-
-export const POPULAR_FALLBACK: PopularVersion[] = [
-  { mc: '1.20.1', loader: 'forge' },
-  { mc: '26.2', loader: 'fabric' },
-  { mc: '1.21.11', loader: 'fabric' },
-]
-
-const LOADER_OK = new Set(['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'])
-let popularCache: Promise<PopularVersion[]> | null = null
-export function loadPopularVersions(): Promise<PopularVersion[]> {
-  if (!popularCache)
-    popularCache = api<{ versions?: { mc?: unknown; loader?: unknown }[] }>('/launcher/popular-versions')
-      .then((r) => {
-        const list = (Array.isArray(r && r.versions) ? r.versions! : [])
-          .filter((v) => typeof v.mc === 'string' && /^\d+(\.\d+)+$/.test(v.mc) && LOADER_OK.has(String(v.loader)))
-          .map((v) => ({ mc: v.mc as string, loader: v.loader as PopularVersion['loader'] }))
-          .slice(0, 3)
-        return list.length ? list : POPULAR_FALLBACK
-      })
-      .catch(() => POPULAR_FALLBACK)
-  return popularCache
-}
-
-/** Имя сборки-заготовки: «Minecraft 1.20.1», у не-Fabric — с загрузчиком. */
-export const presetName = (v: PopularVersion) =>
-  versionBuildName(v.mc) + (v.loader === 'fabric' ? '' : ' ' + ({ vanilla: 'Vanilla', forge: 'Forge', neoforge: 'NeoForge', quilt: 'Quilt' } as const)[v.loader])
-
-/**
- * Заготовка становится настоящей сборкой только при первом «Играть»: до
- * этого на диске её нет. Уже заведённая с тем же именем, версией и
- * загрузчиком — берётся она. Буст FPS и косметика — по возможности.
- */
-export async function ensurePresetBuild(v: PopularVersion, icon: string | null): Promise<string | null> {
-  if (!hasTauri()) return null
-  const name = presetName(v)
-  let profiles = useProfiles.getState().profiles
-  if (!profiles.length) {
-    await useProfiles.getState().refresh()
-    profiles = useProfiles.getState().profiles
-  }
-  const have = profiles.find((p) => p.name === name && p.version === v.mc && loaderOf(p) === v.loader)
-  let built = have ? have.name : null
-  if (!built) {
-    try {
-      const p = await createProfile(name, v.mc, v.loader === 'fabric', v.loader, icon, null)
-      built = p.name
-      await useProfiles.getState().refresh()
-    } catch (e) {
-      console.error('[preset-build] create', v, e)
-      return null
-    }
-  }
-  if (v.loader !== 'vanilla') {
-    const fps = await fpsAvailable(v.mc)
-    if (fps) await applyFps(built, true).catch((e) => console.error('[preset-build] fps', e))
-  }
-  await ensureCosmetics(built).catch((e) => console.error('[preset-build] cosmetics', e))
-  return built
-}

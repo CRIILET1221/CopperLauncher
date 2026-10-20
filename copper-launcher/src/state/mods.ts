@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { hasTauri } from '../ipc/tauri'
-import { cfSearch, listContent, listWorldInstalls, copperPacks, packReviewQueue } from '../ipc/commands'
-import type { CopperPack } from '../ipc/commands'
+import { cfSearch, listContent, listWorldInstalls } from '../ipc/commands'
 import { fmt } from '../lib/format'
 import { MODRINTH_API, mirrorAsset } from '../lib/api'
 import { cachedCatalog } from '../lib/catalogCache'
@@ -20,79 +19,14 @@ export interface ModHit {
   pid?: string
   cfid?: number
   website?: string
-  /** Раздел каталога Copper (mods, texture-packs…): строка из нашего каталога. */
-  section?: string
-  /** Адрес нашей сборки в каталоге Copper — ставится не как чужие. */
-  packSlug?: string
-  /** Платная сборка: ставится по доступу на аккаунте. */
-  packPaid?: boolean
   /** Обложка 16:9 для плиток: featured-картинка галереи или первая из неё. */
   cover?: string
   /** Версии игры и загрузчики проекта — из них собирается «Новая сборка». */
   gameVers?: string[]
   loaders?: string[]
-  /** Версия этой сборки, которая ждёт проверки. Есть только у проверяющих. */
-  packCandidate?: { fileId: string; version: string }
-}
-
-/**
- * Версии на проверке, доступные этому аккаунту.
- *
- * Спрашивается один раз на список, а не по сборке: у игрока ответ пустой, и
- * платить за это двадцатью запросами было бы не за что. Сбой не роняет список
- * сборок — без ответа просто нет кнопки проверки.
- */
-let reviewQueue: Record<string, { fileId: string; version: string }> = {}
-
-let reviewQueueAt = 0
-let reviewQueueLoad: Promise<void> = Promise.resolve()
-const REVIEW_QUEUE_TTL = 60_000
-
-export function refreshReviewQueue(): Promise<void> {
-  // Поиск перебирает буквы, и без потолка частоты это запрос на каждую.
-  // A caller arriving mid-request waits for it instead of reading the still-empty queue.
-  if (Date.now() - reviewQueueAt < REVIEW_QUEUE_TTL) return reviewQueueLoad
-  reviewQueueAt = Date.now()
-  reviewQueueLoad = (async () => {
-    try {
-      const rows = (await packReviewQueue()) || []
-      reviewQueue = Object.fromEntries(rows.map((r) => [r.slug, { fileId: r.fileId, version: r.version }]))
-    } catch {
-      reviewQueue = {}
-    }
-  })()
-  return reviewQueueLoad
-}
-
-export async function reviewCandidateFor(slug: string): Promise<{ fileId: string; version: string } | null> {
-  await refreshReviewQueue()
-  return reviewQueue[slug] ?? null
 }
 
 const LOADER_TAGS =['fabric', 'forge', 'neoforge', 'quilt']
-
-/** Наша сборка в виде строки списка — та же форма, что у чужих источников. */
-function packToHit(p: CopperPack): ModHit {
-  return {
-    title: p.title,
-    // Подпись ставится только у чужой работы. Своё имя рядом с чужой сборкой -
-    // это присвоение: сборки собирали не мы, и в каталоге они лежат по
-    // договорённости, а не потому что стали нашими.
-    author: p.author || '',
-    desc: (p.summary || '').slice(0, 120),
-    dl: p.downloads,
-    icon: p.cover || undefined,
-    cats: [p.game, p.loader].filter(Boolean).slice(0, 2),
-    slug: p.slug,
-    packSlug: p.slug,
-    packPaid: p.accessRequired,
-    packCandidate: reviewQueue[p.slug],
-    pid: 'copper:' + p.slug,
-    cover: p.cover || undefined,
-    gameVers: p.game ? [p.game] : undefined,
-    loaders: p.loader ? [p.loader] : undefined,
-  }
-}
 
 export const F_VERS = ['любая', '1.21.4', '1.21.1', '1.20.1', '1.19.2', '1.18.2', '1.16.5']
 export const F_LOADERS = ['любой', 'fabric', 'forge', 'quilt', 'neoforge']
@@ -118,7 +52,7 @@ export const F_SIDES: [string, string][] = [
  * показывать полтора десятка карточек в списке на тридцать тысяч и терять их
  * на второй странице.
  */
-export const MOD_TABS = ['modpack', 'copper', 'mod', 'resourcepack', 'datapack', 'shader', 'world']
+export const MOD_TABS = ['modpack', 'mod', 'resourcepack', 'datapack', 'shader', 'world']
 
 // Worlds exist only on CurseForge (classId 17); Modrinth has no world project type.
 export const WORLD_CATS: [number, string][] = [
@@ -188,7 +122,6 @@ async function refreshInstalledIds(kind: string): Promise<Set<string>> {
   const ids = new Set<string>()
   const selected = catalogTargetBuild()
   if (!hasTauri() || !selected) return ids
-  if (useProfiles.getState().guarded.includes(selected)) return ids
   if (kind === 'world') {
     try {
       ;(await listWorldInstalls(selected)).forEach((p) => ids.add(p))
@@ -333,26 +266,6 @@ export function loadMr(url: string): Promise<any> {
   })
 }
 
-async function loadPacks(): Promise<CopperPack[]> {
-  // Очередь проверки читается рядом со списком, но МИМО его кэша: список
-  // живёт долго, а версия на проверке появляется в середине дня, и ждать
-  // протухания кэша проверяющему незачем.
-  const [packs] = await Promise.all([
-    cachedCatalog('copper:packs', async () => (await copperPacks()) || []),
-    refreshReviewQueue(),
-  ])
-  return packs
-}
-
-/** Наши сборки ищутся на месте: их полтора десятка, и отдельный запрос на
- *  каждую букву был бы дороже самого поиска. */
-function packsMatching(list: CopperPack[], query: string): ModHit[] {
-  const q = query.toLowerCase()
-  return list
-    .filter((p) => !q || p.title.toLowerCase().includes(q) || (p.summary || '').toLowerCase().includes(q))
-    .map(packToHit)
-}
-
 /** Список категорий Modrinth за сессию не меняется, а спрашивался он при каждом
  *  переключении вкладки — полсотни килобайт за клик. */
 export function loadCategoryTags(): Promise<{ project_type: string; name: string }[]> {
@@ -379,10 +292,6 @@ function warmOtherTabs(): void {
     const ver = st.fVer === 'любая' ? '' : st.fVer
     for (const tab of MOD_TABS) {
       if (tab === st.modTab) continue
-      if (tab === 'copper') {
-        await loadPacks().catch(() => {})
-        continue
-      }
       if (tab === 'world') {
         if (hasTauri())
           await loadCf({
@@ -526,40 +435,6 @@ export const useMods = create<ModsState>((set, get) => ({
       }
       return
     }
-    if (st.modTab === 'copper') {
-      if (!hasTauri()) {
-        set({ hits: [], count: '', showMore: false, notice: 'Премиум-сборки ставятся из приложения' })
-        return
-      }
-      try {
-        const own = await loadPacks()
-        if (stale()) return
-        // Премиум - это сборка по ключу доступа, и только она. Остальные наши
-        // сборки живут в общем списке: прятать бесплатное за словом «премиум»
-        // значит обещать платное там, где его нет.
-        const hits = packsMatching(own.filter((pack) => pack.accessRequired), query)
-        set({
-          hits,
-          count: hits.length ? hits.length + ' сборок' : '',
-          notice: hits.length
-            ? ''
-            : query
-              ? 'По запросу ничего нет'
-              : 'Премиум-сборки появятся здесь',
-          showMore: false,
-        })
-      } catch (e) {
-        if (stale()) return
-        set({ hits: [], count: '', showMore: false, notice: 'Премиум-сборки недоступны: ' + e })
-      }
-      return
-    }
-    /*
-     * Свои сборки видно и во вкладке чужих сборок — первой строкой и только на
-     * первой странице: человек, пришедший за сборкой вообще, должен увидеть
-     * наши раньше, чем тридцать миллионов скачиваний RLCraft.
-     */
-    const wantsOwn = st.modTab === 'modpack' && !append && hasTauri()
     if (st.modSource === 'curseforge' && !hasTauri()) {
       set({ hits: [], showMore: false, notice: 'CurseForge доступен в приложении' })
       return
@@ -572,8 +447,7 @@ export const useMods = create<ModsState>((set, get) => ({
      * байта и только потом начинали Modrinth: ожидание игрока было суммой двух
      * походов в сеть там, где хватает одного самого медленного.
      */
-    const [own, cf, mr] = await Promise.all([
-      wantsOwn ? loadPacks().catch(() => [] as CopperPack[]) : null,
+    const [cf, mr] = await Promise.all([
       wantsCf
         ? loadCf({
             query,
@@ -626,13 +500,10 @@ export const useMods = create<ModsState>((set, get) => ({
     }
     const cfBuffer: ModHit[] = cf && 'hits' in cf ? cf.hits : []
     if (cf && 'hits' in cf) set({ cfOffset: cfOffset + cfBuffer.length })
-    // Свой каталог не отвечает — список чужих источников это не отменяет.
-    // Премиум-сборка в общий список не идёт: у неё своя вкладка и свой ключ.
-    const ownPacks = own ? packsMatching(own.filter((pack) => !pack.accessRequired), query) : []
     if (!mr) {
-      if ((st.modSource === 'all' && cfBuffer.length) || ownPacks.length) {
+      if (st.modSource === 'all' && cfBuffer.length) {
         const shown = append ? get().hits : []
-        const page = ownPacks.concat(mergeSources([], cfBuffer, shown, query))
+        const page = mergeSources([], cfBuffer, shown, query)
         set({
           count: shown.length + page.length + ' результатов',
           hits: append ? shown.concat(page) : page,
@@ -646,11 +517,7 @@ export const useMods = create<ModsState>((set, get) => ({
     const hits: ModHit[] = (d.hits || []).map(mrToHit)
     const shown = append ? get().hits : []
     const merged = st.modSource === 'all' ? mergeSources(hits, cfBuffer, shown, query) : hits
-    // Свои сборки первыми и без дублей: тот же адрес мог прийти и из чужого
-    // каталога, если автор выложил сборку и туда.
-    const page = ownPacks.length
-      ? ownPacks.concat(merged.filter((h) => !ownPacks.some((o) => o.slug === h.slug)))
-      : merged
+    const page = merged
     set({
       count:
         st.modSource === 'all'

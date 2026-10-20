@@ -248,11 +248,6 @@ pub(crate) fn job_key_modpack_mr(slug: &str, target: Option<&str>) -> String {
     }
 }
 
-/// Готовая сборка из каталога Copper: slug карточки, а не id Modrinth.
-pub(crate) fn job_key_modpack_copper(slug: &str) -> String {
-    format!("copper-modpack:{}", slug)
-}
-
 pub(crate) fn job_key_content(source: &str, profile: &str, kind: &str, project: &str) -> String {
     format!("{}-{}:{}:{}", source, kind, profile, project)
 }

@@ -15,7 +15,3 @@ pub async fn store_game_install(app: tauri::AppHandle, slug: String) -> Result<(
     engine::store_game_install(app, slug).await
 }
 
-#[tauri::command]
-pub async fn bedrock_join(host: String, port: u16) -> Result<(), String> {
-    super::blocking(move || engine::bedrock_join(&host, port)).await?
-}

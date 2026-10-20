@@ -22,12 +22,6 @@ pub(crate) fn check_modpack_slug(slug: &str) -> Result<(), String> {
     }
 }
 
-/// Copper catalogue pack slug: `^[a-z0-9-]{1,80}$`. It names a keep folder
-/// and a pack-launch descriptor on disk, and arrives from `copper://` links.
-pub(crate) fn catalog_slug_ok(slug: &str) -> bool {
-    (1..=80).contains(&slug.len()) && slug.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
-}
-
 /// Modrinth version id: alphanumeric, 1..=64.
 pub(crate) fn modrinth_id_ok(id: &str) -> bool {
     (1..=64).contains(&id.len()) && id.bytes().all(|c| c.is_ascii_alphanumeric())

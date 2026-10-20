@@ -202,28 +202,6 @@ pub(crate) fn copy_overrides(src: &Path, dst: &Path) -> std::io::Result<()> {
     copy_dir_filtered(src, dst, &|name: &str| !is_launcher_service_file(name))
 }
 
-/// In-place counterpart of `copy_overrides`, for an unpacked tree that becomes
-/// a game folder by rename instead of by copy: launcher service files go at any
-/// depth. `trusted` names the ones the caller vouches for, at this level only.
-/// A link is never followed into: it could lead out of the tree.
-pub(crate) fn drop_launcher_service_files(dir: &Path, trusted: &[&str]) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        let kind = std::fs::symlink_metadata(entry.path())?.file_type();
-        if is_launcher_service_file(&name) && !trusted.contains(&name.as_str()) {
-            if kind.is_dir() {
-                std::fs::remove_dir_all(entry.path())?;
-            } else {
-                std::fs::remove_file(entry.path())?;
-            }
-        } else if kind.is_dir() {
-            drop_launcher_service_files(&entry.path(), &[])?;
-        }
-    }
-    Ok(())
-}
-
 fn copy_dir_filtered(src: &Path, dst: &Path, keep: &dyn Fn(&str) -> bool) -> std::io::Result<()> {
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;

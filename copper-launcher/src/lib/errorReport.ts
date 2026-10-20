@@ -231,19 +231,13 @@ export function safeArgs(args?: Record<string, unknown>): Record<string, string 
 }
 
 const JOB_REPORTED = 'job-backed install: its failure arrives as InstallFailed from the job progress event'
-const API_ANSWER = 'thin proxy to our API: it logs its own 5xx, a 4xx is its answer to the player'
 const PLAYER_INPUT = 'probes what the player typed or picked: a refusal is the answer shown to them'
 
 export const EXPECTED_BY_COMMAND: Record<string, { why: string; when?: RegExp }> = {
-  copper_api: {
-    why: 'transport of every API call and of this report: the API logs its own 5xx, unhandled rejections already arrive as "promise:"',
-  },
   app_version: { why: 'read by the reporter itself; a failure would report itself in a loop' },
   update_check: { why: 'updater.ts reports it as updater' },
   update_stage: { why: 'updater.ts reports it as updater' },
   update_run: { why: 'updater.ts reports it as updater' },
-  install_catalog_pack: { why: JOB_REPORTED },
-  update_catalog_pack: { why: JOB_REPORTED },
   install_content: { why: JOB_REPORTED },
   install_mod: { why: JOB_REPORTED },
   install_version: { why: JOB_REPORTED },
@@ -252,23 +246,14 @@ export const EXPECTED_BY_COMMAND: Record<string, { why: string; when?: RegExp }>
   update_modpack: { why: JOB_REPORTED },
   cf_install: { why: JOB_REPORTED },
   cf_install_world: { why: JOB_REPORTED },
-  install_catalog_file: { why: JOB_REPORTED },
   cf_install_modpack: { why: JOB_REPORTED },
   install_dep_items: { why: JOB_REPORTED },
-  copper_mod_install: { why: JOB_REPORTED },
   migrate_profile: { why: JOB_REPORTED },
-  copper_packs: { why: API_ANSWER },
-  pack_buy_url: { why: API_ANSWER },
-  unshare_profile: { why: API_ANSWER },
-  cloud_status: { why: API_ANSWER },
-  cloud_forget: { why: API_ANSWER },
   ping_server: { why: 'an offline or unreachable server is the answer the server list shows' },
   mc_textures: { why: 'looks up an arbitrary nick: "no such player" is the answer' },
   head_avatar: { why: 'head of an arbitrary nick from an outside service; a miss falls back to the placeholder' },
   test_java: { why: PLAYER_INPUT },
   fetch_texture: { why: PLAYER_INPUT },
-  pack_preview: { why: PLAYER_INPUT },
-  redeem_pack_key: { why: PLAYER_INPUT },
   set_game_dir: { why: 'the folder the player picked is unreachable or read-only', when: /^(Папка недоступна|Нет прав на запись):/ },
 }
 
@@ -276,13 +261,11 @@ export const EXPECTED_ANYWHERE: Array<[RegExp, string]> = [
   [/Установка отменена|Запуск отменён/, 'the player cancelled'],
   [/уже идёт — дождись/, 'the same job is already running'],
   [/Сборка сейчас запущена — закрой игру|^Запущенной игры нет$/, 'the game is running, or already gone, when the player acted'],
-  [/^(unauthorized|http 401)$|нет токена Copper|вход по лицензии Microsoft устарел/, 'the session ended; the re-login flow takes it from here'],
-  [/^(pack-access|off-platform): /, 'a verdict the UI turns into its own window'],
+  [/^(unauthorized|http 401)$|вход по лицензии Microsoft устарел/, 'the session ended; the re-login flow takes it from here'],
   [
     /Сборка с таким именем уже есть|Папка с таким именем уже занята|Имя не может быть пустым|Название мира не может быть пустым|^пустое имя$|^пустой ник$/,
     'a name the player typed',
   ],
-  [/Такого кода не бывает|Некорректный код сборки/, 'a share code the player typed'],
   [/Мод выключен в настройках лаунчера/, "the player's own setting"],
   [/Сначала закрой игру — она сейчас работает на этой Java/, 'refusing to remove a runtime under a running game is by design'],
   [

@@ -1,46 +1,16 @@
-use super::cf_memo::{cf_memo, cf_memo_key, proxy_verdict, ProxyVerdict};
+use super::cf_memo::{cf_memo, cf_memo_key};
 use crate::engine::*;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
-/// CurseForge requests go through the backend proxy so the API key stays
-/// server-side; the public keyless mirror is the fallback.
-pub(crate) fn cf_base() -> String {
-    format!("{}/launcher/cf", COPPER_API)
-}
-
+/// CurseForge requests go through the public keyless mirror.
 pub(crate) const CF_MIRROR: &str = "https://api.curse.tools";
 
 pub(crate) async fn cf_get(path: &str, q: &[(String, String)]) -> Result<Value, String> {
     let key = cf_memo_key(path, q);
     if let Some(hit) = cf_memo(|m, now| m.answer(&key, now)) {
         return Ok(hit);
-    }
-    if !cf_memo(|m, now| m.proxy_skipped(&key, now)) {
-        let via_proxy = client()
-            .get(format!("{}/{}", cf_base(), path))
-            .query(q)
-            .send()
-            .await;
-        let verdict = match &via_proxy {
-            Ok(r) => proxy_verdict(
-                Some(r.status().as_u16()),
-                r.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
-            ),
-            Err(_) => proxy_verdict(None, None),
-        };
-        cf_memo(|m, now| m.note(&key, verdict, now));
-        if let Ok(r) = via_proxy {
-            if r.status().is_success() {
-                if let Ok(j) = r.json::<Value>().await {
-                    if j.get("data").is_some() {
-                        cf_memo(|m, now| m.remember_answer(&key, &j, now));
-                        return Ok(j);
-                    }
-                }
-            }
-        }
     }
     let r = client()
         .get(format!("{}/{}", CF_MIRROR, path))
@@ -58,37 +28,13 @@ pub(crate) async fn cf_get(path: &str, q: &[(String, String)]) -> Result<Value, 
     Ok(j)
 }
 
-/// The POST endpoints share the outage window only: their bodies differ per call
-/// and are not worth a key of their own.
-fn cf_post_urls(proxy_path: &str, mirror_path: &str) -> Vec<String> {
-    let mirror = format!("{}/{}", CF_MIRROR, mirror_path);
-    if cf_memo(|m, now| m.proxy_skipped("", now)) {
-        vec![mirror]
-    } else {
-        vec![format!("{}/{}", cf_base(), proxy_path), mirror]
-    }
-}
-
-fn cf_note_post(url: &str, res: &Result<reqwest::Response, reqwest::Error>) {
-    if !url.starts_with(&cf_base()) {
-        return;
-    }
-    let verdict = match res {
-        Ok(r) => proxy_verdict(
-            Some(r.status().as_u16()),
-            r.headers().get(reqwest::header::RETRY_AFTER).and_then(|v| v.to_str().ok()),
-        ),
-        Err(_) => proxy_verdict(None, None),
-    };
-    if let ProxyVerdict::Outage(_) = verdict {
-        cf_memo(|m, now| m.note("", verdict, now));
-    }
+fn cf_post_urls(mirror_path: &str) -> Vec<String> {
+    vec![format!("{}/{}", CF_MIRROR, mirror_path)]
 }
 
 /// Что показать, когда не ответили ОБА пути к CurseForge.
 ///
-/// Здесь сходятся наш прокси и зеркало: если не дошло ни туда, ни туда, дело
-/// почти всегда в сети самого игрока - провайдер режет домен, включён VPN,
+/// Если зеркало не ответило, дело почти всегда в сети самого игрока - провайдер режет домен, включён VPN,
 /// который сам не пускает. Дословная ошибка библиотеки («error sending request
 /// for url…») про это не говорит ничего: человек читает незнакомый адрес и
 /// несёт скриншот в поддержку, хотя чинить надо у себя.
@@ -173,16 +119,15 @@ pub(crate) async fn cf_download_cancellable(
 const CF_BULK_MAX: usize = 500;
 
 /// File metadata for a whole manifest in a few requests. One GET per file
-/// meant hundreds of round trips through our proxy, and its per-address limit
-/// (120 a minute) turned a big pack into 429s and minutes of waiting. Ids
+/// meant hundreds of round trips and turned a big pack into 429s and minutes
+/// of waiting. Ids
 /// missing from the answer are left to the per-file path.
 pub(crate) async fn cf_files_bulk(ids: &[u64]) -> std::collections::HashMap<u64, Value> {
     let mut out = std::collections::HashMap::new();
     for chunk in ids.chunks(CF_BULK_MAX) {
         let body = serde_json::json!({ "fileIds": chunk });
-        for url in cf_post_urls("files", "v1/mods/files") {
+        for url in cf_post_urls("v1/mods/files") {
             let res = client().post(&url).json(&body).send().await;
-            cf_note_post(&url, &res);
             let Ok(res) = res else { continue };
             if !res.status().is_success() {
                 continue;
@@ -314,7 +259,7 @@ pub async fn cf_search(
 }
 
 /// Read-only browsing for the catalogue screen: the webview builds the filters,
-/// the core forwards them through the same proxy/mirror path as everything else.
+/// the core forwards them through the same mirror as everything else.
 /// Only the search and category endpoints are reachable this way.
 pub async fn cf_browse(path: String, query: Vec<(String, String)>) -> Result<Value, String> {
     if path != "v1/mods/search" && path != "v1/categories" {
@@ -828,17 +773,15 @@ async fn cf_install_modpack_job(app: &AppHandle, job: &Job, mod_id: u32, file_id
 }
 
 /// Identifies local files by their CurseForge fingerprint. The endpoint is a
-/// POST, so it goes through the backend proxy (the API key stays server-side)
-/// with the public mirror as the fallback, exactly like the GET path.
+/// POST to the same public mirror as the GET path.
 pub(crate) async fn cf_by_fingerprint(prints: &[u32]) -> Vec<Value> {
     if prints.is_empty() {
         return vec![];
     }
     let body = serde_json::json!({ "fingerprints": prints });
     let mut out = vec![];
-    for url in cf_post_urls("fingerprints", "v1/fingerprints") {
+    for url in cf_post_urls("v1/fingerprints") {
         let res = client().post(&url).json(&body).send().await;
-        cf_note_post(&url, &res);
         let Ok(res) = res else { continue };
         if !res.status().is_success() {
             continue;

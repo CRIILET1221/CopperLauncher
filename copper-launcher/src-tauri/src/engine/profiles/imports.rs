@@ -456,8 +456,7 @@ pub(crate) fn version_is_plausible(v: &str) -> bool {
 /// name). The version is recovered from its mods and saved; if the mods do not
 /// tell it, the player gets told what to do instead of «Версия … не найдена».
 pub fn mend_profile_version(p: &mut Profile) -> Result<(), String> {
-    // a native catalogue game has no Minecraft version to recover
-    if version_is_plausible(&p.version) || p.version == NATIVE_GAME_VERSION {
+    if version_is_plausible(&p.version) {
         return Ok(());
     }
     let Some(v) = version_from_mod_names(&profile_dir(&p.name)) else {

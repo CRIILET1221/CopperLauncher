@@ -138,22 +138,6 @@ pub async fn cf_install_world(app: tauri::AppHandle, mod_id: u32, profile: Strin
     engine::cf_install_world(app, mod_id, profile, force.unwrap_or(false)).await
 }
 
-/// A Copper catalogue file (free or paid) into a build. The core asks for the
-/// signed address itself; the webview names only the build, item and file id.
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn install_catalog_file(
-    app: tauri::AppHandle,
-    profile: String,
-    kind: String,
-    slug: String,
-    file_id: String,
-    title: String,
-    sha1: Option<String>,
-) -> Result<engine::ContentInstall, String> {
-    engine::install_catalog_file(app, profile, kind, slug, file_id, title, sha1).await
-}
-
 #[tauri::command(async)]
 pub fn list_world_installs(profile: String) -> Vec<String> { engine::list_world_installs(&profile) }
 
@@ -252,52 +236,5 @@ pub async fn quarantine_mods(profile: String, files: Vec<String>) -> Result<u32,
     super::blocking(move || engine::quarantine(&profile, files)).await?
 }
 
-/// Материал каталога Copper в сборку (или модпак новой сборкой). Адрес файла
-/// ядро берёт у нашего API само — из вебвью приходят только slug и id файла.
-#[tauri::command]
-pub async fn catalog_install(app: tauri::AppHandle, req: engine::CatalogInstallReq) -> Result<engine::CatalogInstall, String> {
-    engine::content_catalog_install(app, req).await
-}
 
-/// Материал каталога с зависимостями — по плану, который собирает API
-/// (/catalog/items/:slug/resolve). План ядро запрашивает само.
-#[tauri::command]
-pub async fn catalog_install_plan(app: tauri::AppHandle, req: engine::CatalogPlanReq) -> Result<engine::CatalogPlanDone, String> {
-    engine::catalog_install_plan(app, req).await
-}
-/// Косметика Copper: подбор варианта под сборку и установка одной кнопкой.
-#[tauri::command]
-pub async fn copper_mod_state(profile: String) -> Result<engine::CopperModState, String> {
-    engine::copper_mod_state(profile).await
-}
-
-#[tauri::command]
-pub async fn copper_mod_install(
-    app: tauri::AppHandle,
-    profile: String,
-) -> Result<engine::CopperModState, String> {
-    engine::copper_mod_install(app, profile).await
-}
-
-#[tauri::command(async)]
-pub fn copper_mod_enabled() -> bool {
-    engine::copper_mod_enabled()
-}
-
-
-
-#[tauri::command(async)]
-pub fn set_copper_mod_enabled(on: bool) -> Result<(), String> {
-    engine::set_copper_mod_enabled(on)
-}
-
-#[tauri::command(async)]
-pub fn pvp_hud_default() -> bool {
-    engine::pvp_hud_default()
-}
-
-#[tauri::command(async)]
-pub fn set_pvp_hud_default(on: bool) -> Result<(), String> {
-    engine::set_pvp_hud_default(on)
-}
 

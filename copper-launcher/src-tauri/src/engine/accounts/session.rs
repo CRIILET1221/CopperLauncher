@@ -34,17 +34,11 @@ pub fn ms_forget(account_id: &str) -> Result<(), String> {
 }
 
 /// What the frontend is allowed to know about stored secrets: whether they exist.
-pub fn session_presence(account_ids: &[String]) -> (bool, HashMap<String, bool>) {
-    let mut keys: Vec<String> = vec![SEC_COPPER.into(), SEC_COPPER_LEGACY.into()];
-    keys.extend(account_ids.iter().map(|id| mc_token_key(id)));
+pub fn session_presence(account_ids: &[String]) -> HashMap<String, bool> {
+    let keys: Vec<String> = account_ids.iter().map(|id| mc_token_key(id)).collect();
     let present = crate::secrets::present(&keys);
     let has = |k: &str| present.get(k).copied().unwrap_or(false);
-    let copper = has(SEC_COPPER) || has(SEC_COPPER_LEGACY);
-    let accounts = account_ids
-        .iter()
-        .map(|id| (id.clone(), has(&mc_token_key(id))))
-        .collect();
-    (copper, accounts)
+    account_ids.iter().map(|id| (id.clone(), has(&mc_token_key(id)))).collect()
 }
 
 struct PendingLogin {
@@ -225,10 +219,6 @@ pub async fn resolve_launch_auth(_app: &AppHandle, args: Option<AuthArgs>) -> Re
         auth: Auth { token, uuid, xuid: args.xuid.unwrap_or_default(), yggdrasil: String::new() },
         nick: Some(nick),
     })
-}
-
-pub fn copper_yggdrasil() -> String {
-    format!("{}/yggdrasil", COPPER_API)
 }
 
 #[cfg(test)]

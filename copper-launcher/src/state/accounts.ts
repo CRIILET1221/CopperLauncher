@@ -12,7 +12,6 @@ export interface Account {
   avatar?: string
   /// Из какого скина нарисовано лицо: по нему видно, что оно устарело.
   avatarFrom?: string
-  balance?: number
   exp?: number
 }
 
@@ -25,7 +24,8 @@ export const HEAD_FROM_CPU = 'cpu:'
 const isHeadAvatar = (v?: string, from?: string): boolean =>
   !!v && v.startsWith('data:image/') && !!from && from.startsWith(HEAD_FROM_CPU)
 
-export const isCopperKind = (kind: string) => kind === 'copper' || kind === 'tg'
+/// Kinds the launcher no longer signs in with: offline nicks and the removed Copper/Telegram login.
+const RETIRED_KINDS = new Set(['offline', 'copper', 'tg'])
 
 function readAccounts(): Account[] {
   try {
@@ -50,23 +50,11 @@ function readActive(): string {
   return localStorage.getItem('m-active') || ''
 }
 
-/// The Copper session lives in one vault slot for the whole launcher, so a second
-/// sign-in replaces the first one instead of adding to it. Rows written before that
-/// was enforced still sit in storage: they all point at the current session and show
-/// its nick, so the list reads as the same account twice.
-function collapseCopper(list: Account[], active: string): { list: Account[]; active: string } {
-  const copper = list.filter((a) => isCopperKind(a.kind))
-  if (copper.length < 2) return { list, active }
-  const keep = copper.find((a) => a.id === active) || copper[copper.length - 1]
-  const next = list.filter((a) => !isCopperKind(a.kind) || a.id === keep.id)
-  return { list: next, active: list.some((a) => a.id === active) && !next.some((a) => a.id === active) ? keep.id : active }
-}
-
 export function loadState(): { list: Account[]; active: string } {
-  const stored = readAccounts().filter((a) => a.kind !== 'offline')
+  const stored = readAccounts().filter((a) => !RETIRED_KINDS.has(a.kind))
   const selected = readActive()
   const active = stored.some((a) => a.id === selected) ? selected : stored[0]?.id || ''
-  const state = collapseCopper(stored, active)
+  const state = { list: stored, active }
   if (state.list.length !== readAccounts().length || state.active !== readActive()) {
     persist(state.list)
     localStorage.setItem('m-active', state.active)
@@ -97,13 +85,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const l = get().list.slice()
     const acc: Account = { ...(input as Account) }
     acc.id = acc.id || 'acc' + Date.now() + Math.floor(Math.random() * 1000)
-    const i = isCopperKind(acc.kind)
-      ? l.findIndex((x) => isCopperKind(x.kind))
-      : l.findIndex((x) => x.nick === acc.nick && x.kind === acc.kind)
+    const i = l.findIndex((x) => x.nick === acc.nick && x.kind === acc.kind)
     if (i >= 0) {
-      // A Copper row is replaced, not merged: keeping the previous balance, avatar
-      // or uuid would show one user's facts under another user's login.
-      l[i] = isCopperKind(acc.kind) ? { ...acc, id: l[i].id } : Object.assign(l[i], acc)
+      Object.assign(l[i], acc)
       acc.id = l[i].id
     } else {
       l.push(acc)
@@ -128,7 +112,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     set({ list: l, active })
   },
   save: (list) => {
-    list = list.filter((a) => a.kind !== 'offline')
+    list = list.filter((a) => !RETIRED_KINDS.has(a.kind))
     persist(list)
     set({ list: list.slice() })
   },
@@ -138,38 +122,6 @@ export function getAccount(): Account | null {
   const { list, active } = useAccounts.getState()
   if (!list.length) return null
   return list.find((a) => a.id === active) || list[0]
-}
-
-export function getCopperAccount(): Account | null {
-  const { list } = useAccounts.getState()
-  return list.find((a) => isCopperKind(a.kind)) || null
-}
-
-/// The Copper game profile carries its own name, and the game uses that one — the site
-/// login is not the in-game nick. Read from cache so callers stay synchronous.
-export const GAME_NICK_KEY = 'm-game-nick'
-
-/// The public profile lives at /u/<publicSlug>, and that slug is not the nick:
-/// it can be taken, renamed or missing entirely when the profile is hidden.
-export const PROFILE_SLUG_KEY = 'm-profile-slug'
-
-/// Which user the cached game nick and profile slug belong to, so a sign-in with a
-/// different Copper account is told apart from a renamed one.
-export const COPPER_USER_KEY = 'm-copper-uid'
-
-export function profileSlug(): string {
-  const a = getAccount()
-  if (!a || !isCopperKind(a.kind)) return ''
-  return localStorage.getItem(PROFILE_SLUG_KEY) || ''
-}
-
-export function effectiveNick(): string {
-  const a = getAccount()
-  if (a && isCopperKind(a.kind)) {
-    const game = localStorage.getItem(GAME_NICK_KEY) || ''
-    if (game) return game
-  }
-  return (a && a.nick) || 'Player' + Math.floor(Math.random() * 9999)
 }
 
 export function hasLicenseSession(a: Account): boolean {

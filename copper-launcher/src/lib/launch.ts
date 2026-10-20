@@ -1,23 +1,15 @@
 import { hasTauri } from '../ipc/tauri'
-import { PACK_ACCESS_PREFIX, cancelLaunch, launchGame, launchProfile, loadProfileSettings, quickPlay, pinServerDat, runningGames, discordPresence as ipcDiscordPresence } from '../ipc/commands'
-import { usePackKey } from '../state/packKey'
+import { cancelLaunch, launchGame, launchProfile, quickPlay, pinServerDat, runningGames, discordPresence as ipcDiscordPresence } from '../ipc/commands'
 import { listenLaunchProgress } from '../ipc/events'
 import type { UnlistenFn } from '../ipc/tauri'
 import type { LaunchAuth } from '../ipc/commands'
-import { joinPageUrl } from './invite'
-import { getAccount, profileSlug } from '../state/accounts'
+import { getAccount } from '../state/accounts'
 import { ensureMsAuth, startMsLogin } from '../state/msLogin'
 import { uiConfirm } from '../state/confirm'
 import { useProfiles } from '../state/profiles'
 import { showToast, useUi } from '../state/ui'
 import { useGame } from '../state/game'
 import { applyLaunchWindowMode } from './window'
-import { buildTag } from './diagnosticPrivacy'
-import { packStepForLaunch, runPackUpdateForLaunch } from './packLaunch'
-import { afterPackUpdate } from './packUpdate'
-import { isNativeGame } from './nativeGame'
-import { stopInstall } from '../state/installs'
-
 export { PL_STAGES, REPAIR_STAGES } from './launchView'
 
 const STAGE_IDX: Record<string, number> = { files: 0, assets: 2, java: 1, launch: 3, mod: 0, content: 3 }
@@ -89,13 +81,9 @@ export function discordPresence(status?: string, server?: string | null): Promis
   // Discord only proxies https images; data: and local paths are silently ignored.
   const icon = pack && pack.icon && pack.icon.startsWith('https://') ? pack.icon : ''
   const details = playing ? (build ? 'Играет · ' + build : 'В игре') : 'В лаунчере'
-  const addr = (session && session.server) || ''
   const place = (session && (session.serverName || session.server)) || server || ''
   const state = playing && place ? 'Сервер: ' + place : nick ? 'Ник: ' + nick : 'Copper Launcher'
-  // Версия сборки уезжает в ссылку: принимающий лаунчер иначе знает только
-  // адрес и заходит тем, что у гостя выбрано сейчас.
-  const joinUrl = playing && addr ? joinPageUrl(addr, (session && session.serverName) || null, pack && pack.version) : ''
-  return ipcDiscordPresence(details, state, playing, icon, build, joinUrl, profileSlug())
+  return ipcDiscordPresence(details, state, playing, icon, build)
     .then((st) => (st && st.userId) || '')
     .catch(() => '')
 }
@@ -104,10 +92,6 @@ export function heartbeat(status?: string, server?: string | null) {
   void discordPresence(status, server)
 }
 
-/** A fresh socket has to hear the current state once, even when nothing changed since the last beat. */
-export function beatAfterReconnect() {
-  heartbeat('lobby')
-}
 
 export function ramMbFor(profile: string): number {
   const gb = parseInt(localStorage.getItem('m-ram-' + profile) || '0', 10)
@@ -139,42 +123,6 @@ let launching = false
 /// Растёт при каждом «Отменить»: запуск, который ещё ждал входа, по нему видит отмену и не зовёт ядро.
 let cancelEpoch = 0
 const CANCELLED_TEXT = 'Запуск отменён'
-/// Install key of the pack update this launch started; cancelling the launch cancels it too.
-let updatingKey: string | null = null
-
-/**
- * A catalogue build is brought to its published version before the game
- * starts, so players who only ever press Play still get the fixed build.
- * `openCard` shows the launch progress for paths that have no card of their own.
- */
-async function freshenPack(profile: string, epoch: number, openCard: boolean): Promise<void> {
-  const step = await packStepForLaunch(profile)
-  if (epoch !== cancelEpoch) throw new Error(CANCELLED_TEXT)
-  if (step.kind === 'launch-unchecked') {
-    showToast('Не удалось проверить обновление сборки: ' + step.reason + '. Запускаем установленную версию')
-    return
-  }
-  if (step.kind !== 'update') return
-  const u = step.update
-  const label = 'Обновляем сборку до ' + u.to + '…'
-  const open = openCard ? { open: true, sub: profile, stage: 0, msg: null, mode: 'launch' as const } : {}
-  useUi.getState().setPrelaunch({ ...open, label, pct: 0 })
-  const job = runPackUpdateForLaunch(profile, u, (pct) => {
-    if (epoch === cancelEpoch) useUi.getState().setPrelaunch({ pct })
-  })
-  if (job.own) updatingKey = job.key
-  const outcome = await job.outcome.finally(() => {
-    if (updatingKey === job.key) updatingKey = null
-  })
-  if (epoch !== cancelEpoch) throw new Error(CANCELLED_TEXT)
-  useUi.getState().setPrelaunch(openCard ? { open: false, label: null } : { label: null, pct: 2, msg: 'Готовимся…' })
-  const next = afterPackUpdate(u, outcome)
-  if (next.toast) showToast(next.toast, 'error')
-  if (!next.launch) {
-    showToast('Обновление сборки отменено — игра не запускалась')
-    throw new Error(CANCELLED_TEXT)
-  }
-}
 
 /// doJoin resolves with the core's answer; this sentinel means the game was
 /// never started, so callers must not report "заходим на сервер".
@@ -236,8 +184,7 @@ function doJoin(profile: string, world: string | null, server: string | null, se
   pinJoinedServer(profile, world ? null : server, serverName)
   heartbeat('playing', serverName || server)
   const epoch = cancelEpoch
-  return freshenPack(profile, epoch, true)
-    .then(() => resolveAuth(profile))
+  return resolveAuth(profile)
     .then((a) => {
       if (epoch !== cancelEpoch) throw new Error(CANCELLED_TEXT)
       return quickPlay(profile, a.nick, ramMbFor(profile), world, server, a.auth)
@@ -261,28 +208,11 @@ function doJoin(profile: string, world: string | null, server: string | null, se
 
 /**
  * A quick join leaves no trace in the in-game list, so a player who drops out
- * has no way back. Both pins rewrite servers.dat, so they run one after
- * another: concurrent writes would lose one of the entries.
+ * has no way back.
  */
 function pinJoinedServer(profile: string, server: string | null, serverName?: string | null) {
-  if (!server || !hasTauri()) {
-    pinHostServer(profile)
-    return
-  }
-  void pinServerDat(profile, serverName || server, server)
-    .catch((e) => console.warn('[join] servers.dat', e))
-    .finally(() => pinHostServer(profile))
-}
-
-export function pinHostServer(profile: string) {
-  if (!hasTauri() || !profile) return
-  if (isNativeGame(useProfiles.getState().profiles.find((p) => p.name === profile))) return
-  try {
-    const raw = localStorage.getItem('m-host-pin')
-    if (!raw) return
-    const { name, addr } = JSON.parse(raw) as { name?: string; addr?: string }
-    if (addr) void pinServerDat(profile, name || 'Мой сервер', addr).catch(() => {})
-  } catch {}
+  if (!server || !hasTauri()) return
+  void pinServerDat(profile, serverName || server, server).catch((e) => console.warn('[join] servers.dat', e))
 }
 
 export function realLaunch(name: string) {
@@ -308,8 +238,8 @@ function doLaunch(name: string) {
   launching = true
   const setPrelaunch = useUi.getState().setPrelaunch
   const pack = useProfiles.getState().profiles.find((p) => p.name === name)
-  const ver = isNativeGame(pack) ? '' : pack ? (pack.version === 'latest' ? 'Minecraft последней версии' : 'Minecraft ' + pack.version) : 'Minecraft последней версии'
-  setPrelaunch({ open: true, sub: ver ? name + ' · ' + ver : name, stage: 0, pct: 2, msg: 'Готовимся…', mode: 'launch' })
+  const ver = pack ? (pack.version === 'latest' ? 'Minecraft последней версии' : 'Minecraft ' + pack.version) : 'Minecraft последней версии'
+  setPrelaunch({ open: true, sub: name + ' · ' + ver, stage: 0, pct: 2, msg: 'Готовимся…', mode: 'launch' })
   try {
     localStorage.setItem('m-last-' + name, String(Date.now()))
   } catch {}
@@ -325,7 +255,6 @@ function doLaunch(name: string) {
     setGameSession(name)
     heartbeat('playing')
   } catch {}
-  pinHostServer(name || useProfiles.getState().selected || '')
   // The subscription can resolve after the launch finished; unsubscribe explicitly or it leaks.
   let unlisten: UnlistenFn | null = null
   let finished = false
@@ -344,31 +273,15 @@ function doLaunch(name: string) {
   })
   const prof = name || useProfiles.getState().selected
   const epoch = cancelEpoch
-  const inv = (prof ? freshenPack(prof, epoch, false) : Promise.resolve())
-    .then(() => resolveAuth(prof || null))
+  const inv = resolveAuth(prof || null)
     .then((a) => {
       if (epoch !== cancelEpoch) throw new Error(CANCELLED_TEXT)
       return prof
         ? launchProfile(prof, a.nick, ramMbFor(prof), a.auth)
         : launchGame('latest', a.nick, false, ramMbFor('default'), a.auth)
     })
-  // Read when reported, not up front: the update before the launch changes the pack version.
-  const packInfo = (): Promise<Record<string, string>> => prof
-    ? loadProfileSettings(prof)
-        .then((s) => {
-          const pack = (s?.catalogPackSlug || '').trim()
-          const out: Record<string, string> = {}
-          if (pack) out.pack = pack
-          if (pack) out.build = buildTag(prof, pack) || 'default'
-          if (pack && s?.catalogPackVersion) out.packVersion = s.catalogPackVersion
-          if (s?.modpackSlug) out.modpack = s.modpackSlug
-          return out
-        })
-        .catch(() => ({}))
-    : Promise.resolve({})
   inv
     .then(() => {
-      void packInfo().then((_pack) => undefined)
       useGame.getState().addRunning(prof || 'default')
       window.dispatchEvent(new Event('copper-game-started'))
       setTimeout(() => {
@@ -386,21 +299,6 @@ function doLaunch(name: string) {
       setPrelaunch({ open: false })
       setGameSession(null)
       if (String(err).includes('отмен')) return
-      void packInfo().then((_pack) => {
-        ;
-        ;
-      })
-      const text = String(err)
-      const at = text.indexOf(PACK_ACCESS_PREFIX)
-      if (at >= 0 && prof) {
-        // The service refused a paid pack: the player gets the subscribe window, not a red error.
-        const reason = text.slice(at + PACK_ACCESS_PREFIX.length)
-        void packInfo().then((pack) => {
-          if (pack.pack) usePackKey.getState().show(pack.pack, prof, reason, () => realLaunch(prof))
-          else showLaunchError(err)
-        })
-        return
-      }
       showLaunchError(err)
     })
     .finally(() => {
@@ -442,7 +340,6 @@ export function cancelPrelaunch() {
   // here would race it with a second toast.
   const repair = ui.prelaunch.mode === 'repair'
   if (hasTauri()) cancelLaunch().catch(() => {})
-  if (updatingKey) stopInstall(updatingKey)
   if (repair) {
     ui.setPrelaunch({ msg: 'Отменяем…' })
     return

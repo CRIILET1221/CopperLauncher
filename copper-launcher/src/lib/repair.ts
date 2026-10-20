@@ -153,7 +153,7 @@ export interface PackRepair {
   /** Что поменяли — короткими строками. */
   done: string[]
   failed: string[]
-  /** Вылет был, а автоматом его причину не убрать: дальше — Милли или поддержка. */
+  /** Вылет был, а автоматом его причину не убрать: дальше — разбор лога вручную. */
   unresolved: SavedCrash | null
   files: RepairReport | null
   filesText: string
@@ -162,7 +162,7 @@ export interface PackRepair {
 /**
  * «Починить» на странице сборки: план последнего вылета → недостающие
  * зависимости → файлы по хешам. Всё локально и без аккаунта: те же команды
- * ядра, что у окна вылета и у Милли, с их проверками.
+ * ядра, что у окна вылета, с их проверками.
  */
 export async function repairPack(profile: string): Promise<PackRepair | null> {
   if (!hasTauri()) {

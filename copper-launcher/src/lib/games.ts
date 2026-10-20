@@ -86,7 +86,6 @@ export const gameHero = (_slug: GameSlug) => '/bg/bg2.svg'
  */
 export const gameBuyUrl = (slug: GameSlug) =>
   'https://blups.me/game/xbox?utm_source=copper_launcher&utm_medium=game&utm_campaign=' + slug
-export const gameSite = (slug: GameSlug) => 'copper-disabled://removed-service/games/' + slug + '?utm_source=launcher&utm_medium=game'
 
 export const useGame = create<{ slug: GameSlug; open: (slug: GameSlug) => void }>((set) => ({
   slug: 'bedrock',

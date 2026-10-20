@@ -3,7 +3,6 @@ import { cfFiles, cfProject } from '../ipc/commands'
 import { hasTauri } from '../ipc/tauri'
 import { fmt } from '../lib/format'
 import { MODRINTH_API, mirrorAsset } from '../lib/api'
-import { blocksToMarkdown, catalog, cleanTitle, sitePage } from '../lib/copperCatalog'
 import { openModal } from './ui'
 import { useMods } from './mods'
 import { orderGallery } from '../modals/projectView'
@@ -46,38 +45,6 @@ export interface ProjectLink {
   url: string
 }
 
-/**
- * Откуда открыли окно. Сейчас — карточка сборки Милли: окно показывает, что мод
- * в сборке, и даёт убрать его/вернуть, не возвращаясь в чат. Поле необязательное:
- * каждый openProject/openCfProject/openCopperProject без него сбрасывает его в null.
- */
-export interface ProjectCtx {
-  from: 'milli'
-  /** Мод сейчас в сборке (не выключен игроком). */
-  inPack: boolean
-  /** Нужен для запуска — убрать нельзя. */
-  locked?: boolean
-  /** Название сборки Милли — для подписи «В сборке «…»». */
-  packTitle?: string
-  /** Зачем Милли взяла этот мод (MilliItem.why). */
-  why?: string
-  /** Названия модов сборки, которым нужен этот мод (он их зависимость). */
-  neededBy?: string[]
-  /** Убрать/вернуть мод в сборке Милли. Нет — кнопки нет (сборка уже ставится). */
-  onToggle?: () => void
-  /**
-   * Мод из верстака: «Убрать/Вернуть» идёт через стор сборки (`benchOp`), а
-   * «в сборке ли» окно читает из головы ревизии — карточка может уже размонтироваться.
-   */
-  bench?: { projectId: string; tab: 'mods' | 'resourcepacks' | 'shaders' }
-  /** Вернуться к сборке (открыть Милли обратно). */
-  onBack?: () => void
-}
-
-export interface OpenProjectOpts {
-  ctx?: ProjectCtx | null
-}
-
 interface ProjectState {
   slug: string
   kind: string
@@ -90,10 +57,6 @@ interface ProjectState {
   gallery: ProjectGallery[]
   versions: ProjectVersion[]
   source: string
-  /// Раздел каталога Copper, когда source === 'copper'.
-  section: string
-  /// Готовая сборка лаунчера: ставится install_catalog_pack, ключ задачи свой.
-  launcherOnly: boolean
   cfid: number
   /// Modrinth project id: an installed mod is recorded under it, not under the slug.
   projectId: string
@@ -119,12 +82,11 @@ interface ProjectState {
   serverSide: string
   /** Фирменный цвет проекта (Modrinth `color`) — подложка шапки без картинок. */
   color: number | null
-  ctx: ProjectCtx | null
   set: (patch: Partial<ProjectState>) => void
 }
 
 /// Поля, которые каждое открытие окна обязано сбросить: иначе у нового мода
-/// оставались автор, лицензия и контекст Милли от предыдущего.
+/// оставались автор, лицензия и ссылки от предыдущего.
 const FRESH = (): Partial<ProjectState> => ({
   projectId: '',
   failed: false,
@@ -142,7 +104,6 @@ const FRESH = (): Partial<ProjectState> => ({
   clientSide: '',
   serverSide: '',
   color: null,
-  ctx: null,
 })
 
 export const useProject = create<ProjectState>((set) => ({
@@ -157,8 +118,6 @@ export const useProject = create<ProjectState>((set) => ({
   gallery: [],
   versions: [],
   source: 'modrinth',
-  section: '',
-  launcherOnly: false,
   cfid: 0,
   projectId: '',
   website: '',
@@ -179,7 +138,6 @@ export const useProject = create<ProjectState>((set) => ({
   clientSide: '',
   serverSide: '',
   color: null,
-  ctx: null,
   set: (patch) => set(patch as ProjectState),
 }))
 
@@ -225,7 +183,7 @@ function mrLinks(p: {
 }
 
 /// Автор: в карточке проекта Modrinth его нет (только id команды), а ручку
-/// members наш прокси не пускает — берём из поиска по id проекта, как подсказка Милли.
+/// members наш прокси не пускает — берём из поиска по id проекта.
 async function mrAuthor(projectId: string): Promise<{ author: string; authorUrl: string } | null> {
   const facets = encodeURIComponent(JSON.stringify([['project_id:' + projectId]]))
   const r = await fetch(MODRINTH_API + '/v2/search?limit=1&facets=' + facets).then((x) => x.json())
@@ -313,14 +271,11 @@ export async function openCfProject(cfid: number, kind?: string, fallbackTitle?:
   } catch {}
 }
 
-export async function openProject(slug: string, kind?: string, game?: string | null, opts?: OpenProjectOpts) {
+export async function openProject(slug: string, kind?: string, game?: string | null) {
   const s = useProject.getState()
   s.set({
     ...FRESH(),
-    ctx: (opts && opts.ctx) || null,
     slug,
-    section: '',
-    launcherOnly: false,
     icon: '',
     sub: '',
     source: 'modrinth',
@@ -410,119 +365,4 @@ export async function openProject(slug: string, kind?: string, game?: string | n
   } catch {
     if (still()) useProject.getState().set({ title: 'Не удалось загрузить', loading: false, failed: true })
   }
-}
-
-/// Карточка каталога Copper в том же окне материала. Готовой сборки каталога в
-/// общей карточке может не быть (её текст ещё не вышел) — тогда берём витрину сборки.
-export async function openCopperProject(slug: string, section: string, kind?: string, fallbackTitle?: string) {
-  useProject.getState().set({
-    ...FRESH(),
-    slug,
-    section,
-    launcherOnly: false,
-    source: 'copper',
-    cfid: 0,
-    kind: kind || useMods.getState().modTab,
-    tab: 'desc',
-    title: fallbackTitle || '',
-    icon: '',
-    sub: '',
-    body: '',
-    gallery: [],
-    versions: [],
-    tags: [],
-    website: sitePage(section, slug),
-    loading: true,
-  })
-  openModal('pjModal')
-  try {
-    const p = await catalog.item(slug)
-    useProject.getState().set({
-      icon: p.icon || p.cover || '',
-      title: cleanTitle(p.title),
-      launcherOnly: !!p.launcherOnly,
-      sub:
-        fmt(Math.max(p.downloads || 0, p.sourceDownloads || 0)) +
-        ' скачиваний' +
-        (p.author ? ' · ' + p.author : '') +
-        (p.license ? ' · ' + p.license : ''),
-      tags: (p.tags || []).slice(0, 6),
-      summary: p.summary || '',
-      author: p.author || '',
-      downloads: Math.max(p.downloads || 0, p.sourceDownloads || 0),
-      license: p.license ? { id: p.license } : null,
-      updated: p.updatedAt || null,
-      loaders: [...new Set((p.files || []).flatMap((f) => f.loaders || []))],
-      gameVersions: [...new Set((p.files || []).flatMap((f) => f.gameVersions || []))],
-      links: p.sourceUrl ? [{ kind: 'source', label: 'Страница автора', url: p.sourceUrl }] : [],
-      body: blocksToMarkdown(p.description) || p.summary || '',
-      gallery: (p.gallery || []).map((url) => ({ url })),
-      versions: (p.files || []).slice(0, 40).map((f) => ({
-        id: f.id,
-        name: f.version,
-        game_versions: f.gameVersions,
-        loaders: f.loaders,
-        size: f.size,
-        date: f.releasedAt,
-        downloads: f.downloads,
-      })),
-      loading: false,
-    })
-    return
-  } catch {}
-  if (section === 'modpacks') {
-    try {
-      const pk = await catalog.pack(slug)
-      useProject.getState().set({
-        icon: pk.cover || '',
-        title: pk.title,
-        launcherOnly: true,
-        sub: [pk.game, pk.loader].filter(Boolean).join(' · '),
-        summary: pk.summary || '',
-        loaders: pk.loader ? [pk.loader] : [],
-        gameVersions: pk.game ? [pk.game] : [],
-        body: pk.summary || '',
-        versions: pk.files
-          .filter((f) => f.side === 'client')
-          .map((f) => ({ id: f.id, name: f.version, game_versions: [pk.game], loaders: [pk.loader], size: f.size })),
-        loading: false,
-      })
-      return
-    } catch {}
-  }
-  useProject.getState().set({ loading: false, failed: true, title: fallbackTitle || 'Не удалось загрузить', sub: '' })
-}
-
-// ─── Мод из сборки Милли ─────────────────────────────────────────────────────
-
-/** Модрин-тип проекта по вкладке верстака. */
-const KIND_OF_TAB = { mods: 'mod', resourcepacks: 'resourcepack', shaders: 'shader' } as const
-
-/**
- * Открыть мод из верстака или квитанции: запомнить прокрутку чата и списков,
- * свернуть Милли и открыть окно мода. Любое закрытие окна вернёт в тот же чат
- * (эффект закрытия в Project.tsx зовёт `onBack`), прокрутка восстановится.
- */
-export async function openMilliItem(
-  m: { projectId: string; slug: string; why?: string; base?: boolean },
-  tab: 'mods' | 'resourcepacks' | 'shaders' = 'mods',
-  extra: { neededBy?: string[]; locked?: boolean } = {},
-) {
-  const [{ benchHas, benchSaveScroll, useBench }, milli] = await Promise.all([import('./milliBench'), import('./milli')])
-  benchSaveScroll()
-  const head = useBench.getState().head
-  const has = benchHas(m.projectId)
-  milli.closeMilli()
-  void openProject(m.slug, KIND_OF_TAB[tab], null, {
-    ctx: {
-      from: 'milli',
-      inPack: has ? has.on : true,
-      locked: extra.locked,
-      packTitle: head?.title,
-      why: m.why,
-      neededBy: extra.neededBy,
-      bench: { projectId: m.projectId, tab: has?.tab ?? tab },
-      onBack: () => milli.openMilli({ src: 'project' }),
-    },
-  })
 }

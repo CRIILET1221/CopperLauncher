@@ -9,7 +9,6 @@
 //! an accusation: hand-built and private jars are legitimately unknown, and
 //! saying otherwise would train players to ignore the report.
 
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
@@ -17,8 +16,6 @@ use serde::Serialize;
 
 use crate::engine::*;
 
-const BLOCKLIST_PATH: &str = "/launcher/mod-blocklist";
-const BLOCKLIST_TTL: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
 /// Bigger jars exist (kitchen-sink packs, shader libraries), they are simply
 /// not read entry by entry: the heuristics are a cheap first pass, not an
 /// antivirus.
@@ -178,25 +175,6 @@ fn counted_findings(disguised: u32, nested: u32) -> Vec<(String, bool)> {
     out
 }
 
-fn blocklist_cache() -> std::path::PathBuf {
-    data_dir().join("cache").join("mod-blocklist.json")
-}
-
-/// Hashes the launcher refuses to vouch for, published by the API. A failure to
-/// fetch is reported, never silently treated as "nothing is blocked".
-async fn blocklist() -> Result<HashMap<String, String>, String> {
-    let cache = blocklist_cache();
-    let path = format!("{}{}", COPPER_API, BLOCKLIST_PATH);
-    let v = get_json_fresh(&path, &cache, BLOCKLIST_TTL).await?;
-    let mut out = HashMap::new();
-    for item in v["items"].as_array().into_iter().flatten() {
-        let Some(sha1) = item["sha1"].as_str() else { continue };
-        let why = item["reason"].as_str().unwrap_or("Файл в списке вредоносных").to_string();
-        out.insert(sha1.to_ascii_lowercase(), why);
-    }
-    Ok(out)
-}
-
 struct Jar {
     file: String,
     path: std::path::PathBuf,
@@ -294,12 +272,7 @@ pub async fn scan_safety(profile: String) -> Result<SafetyReport, String> {
 
     let hashes: Vec<String> = scanned.iter().filter_map(|(h, _)| h.clone()).collect();
     let known_remote = versions_by_hash(&hashes).await;
-    let (blocked, note) = match blocklist().await {
-        Ok(map) => (map, String::new()),
-        Err(e) => (HashMap::new(), format!("Список вредоносных файлов недоступен ({}) — проверка шла по каталогам и содержимому", e)),
-    };
-
-    let mut report = SafetyReport { profile: profile.clone(), checked_at: now_secs(), note, ..Default::default() };
+    let mut report = SafetyReport { profile: profile.clone(), checked_at: now_secs(), ..Default::default() };
     for (jar, (sha1, inspected)) in jars.iter().zip(scanned) {
         let sha1 = sha1.unwrap_or_default().to_ascii_lowercase();
         let entry = manifest.iter().find(|e| e.kind == "mod" && e.file_name == jar.file);
@@ -315,7 +288,7 @@ pub async fn scan_safety(profile: String) -> Result<SafetyReport, String> {
             .filter(|t| !t.is_empty())
             .or_else(|| metas.get(&jar.file).map(|m| m.title.clone()).filter(|t| !t.is_empty()))
             .unwrap_or_else(|| jar.file.clone());
-        let v = verdict_for(jar, sha1.clone(), blocked.get(&sha1), catalog, title, inspected);
+        let v = verdict_for(jar, sha1.clone(), None, catalog, title, inspected);
         match v.verdict.as_str() {
             "blocked" => report.blocked += 1,
             "suspicious" => report.suspicious += 1,

@@ -1,19 +1,16 @@
 // Предпросмотр в обычном браузере (только dev, в релиз не попадает):
-// http://127.0.0.1:5173/?preview — API через прокси Vite и демо-профиль интерфейса, чтобы
-// увидеть экраны без Tauri-входа. Подробно — docs/LOCAL-DEV.md.
+// http://127.0.0.1:5173/?preview — демо-профиль интерфейса, чтобы увидеть экраны без Tauri-входа.
 //
 // http://127.0.0.1:5173/?preview=user — то же плюс демо-вход: лаунчер считает,
-// что человек вошёл в аккаунт Copper, и все экраны показывают залогиненный
-// вид. Ответы «моих» ручек лежат в src/lib/demo.ts, публичные данные при этом
-// остаются живыми. Всё под import.meta.env.DEV: в релизе ветки нет.
+// что человек вошёл в аккаунт Microsoft, и экраны показывают залогиненный вид
+// (флаг — src/lib/demo.ts). Всё под import.meta.env.DEV: в релизе ветки нет.
 if (import.meta.env.DEV && !('__TAURI_INTERNALS__' in window) && new URLSearchParams(location.search).has('preview')) {
   const demo = new URLSearchParams(location.search).get('preview') === 'user'
-  localStorage.setItem('m-api', '/papi/v2')
 
   // Засеянную запись переписываем, чужую (заведённую руками) не трогаем:
   // так переключение ?preview ↔ ?preview=user работает в обе стороны.
   const seeded = demo
-    ? [{ id: 'demo-user', nick: 'SlavaMine', kind: 'copper', uuid: '8f3c1a0e2b7d4e6a9c05d31f7a2b8e44', balance: 148900 }]
+    ? [{ id: 'demo-user', nick: 'SlavaMine', kind: 'microsoft', uuid: '8f3c1a0e2b7d4e6a9c05d31f7a2b8e44' }]
     : [{ id: 'preview', nick: 'Steve', kind: 'preview' }]
   let current: { id?: string }[] = []
   try {
@@ -25,10 +22,7 @@ if (import.meta.env.DEV && !('__TAURI_INTERNALS__' in window) && new URLSearchPa
     localStorage.setItem('m-accounts', JSON.stringify(seeded))
     localStorage.setItem('m-active', seeded[0]!.id)
   }
-  if (!demo) localStorage.removeItem('m-copper-uid')
 
-  localStorage.setItem('m-mil-ever', '1')
-  localStorage.setItem('m-onb-done', '1')
 
   // Видно, что это не настоящий вход: маленькая неяркая плашка в углу.
   if (demo) {
@@ -56,7 +50,7 @@ if (import.meta.env.DEV && !('__TAURI_INTERNALS__' in window) && new URLSearchPa
     else document.addEventListener('DOMContentLoaded', mark, { once: true })
   }
 
-  // `&open=rubies` — сразу открыть экран (скриншоты магазина без кликов).
+  // `&open=settings` — сразу открыть экран (скриншоты без кликов).
   const open = new URLSearchParams(location.search).get('open')
   if (open) setTimeout(() => void import('./state/ui').then((m) => m.useUi.getState().setScreen(open as never)), 600)
 

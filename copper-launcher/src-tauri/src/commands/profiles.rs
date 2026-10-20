@@ -62,17 +62,6 @@ pub fn set_profile_gpu(profile: String, pref: String) -> String {
 pub fn gpu_switch_supported() -> bool { engine::gpu_switch_supported() }
 
 #[tauri::command(async)]
-pub fn skin_mod_state(profile: String) -> serde_json::Value { engine::skin_mod_state(&profile) }
-
-/// Off takes the jar out of the build now and keeps it out: the launcher used to
-/// put its skin mod back on the next launch, so a build it does not fit could
-/// not be fixed by removing it.
-#[tauri::command(async)]
-pub fn set_skin_mod(profile: String, on: bool) -> Result<serde_json::Value, String> {
-    engine::set_skin_mod(&profile, on)
-}
-
-#[tauri::command(async)]
 pub fn fps_boost_state(profile: String) -> engine::FpsBoostState { engine::fps_boost_state(&profile) }
 
 #[tauri::command]
@@ -140,11 +129,6 @@ pub async fn save_screenshot_as(profile: String, name: String) -> Result<Option<
     engine::save_screenshot_as(profile, name).await
 }
 
-#[tauri::command]
-pub async fn share_screenshot(profile: String, name: String) -> Result<String, String> {
-    engine::share_screenshot(profile, name).await
-}
-
 #[tauri::command(async)]
 pub fn set_profile_group(name: String, group: String) { engine::set_profile_group(&name, &group); }
 
@@ -190,7 +174,6 @@ pub fn rename_profile(name: String, new_name: String) -> Result<Vec<engine::Prof
     if old_dir != new_dir {
         if new_dir.exists() { return Err("Папка с таким именем уже занята — выбери другое".into()); }
         if old_dir.exists() { std::fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?; }
-        engine::move_pack_launch_trust(&name, &nn);
     }
     for p in all.iter_mut() { if p.name == name { p.name = nn.clone(); } }
     engine::save_profiles(&all)?;
@@ -319,84 +302,6 @@ pub async fn migrate_profile(
     engine::migrate_profile(app, profile, version, loader, loader_version, name).await
 }
 
-/// Где купить ключ от платной сборки.
-#[tauri::command]
-pub async fn pack_buy_url(slug: String) -> Result<String, String> {
-    engine::pack_buy_url(&slug).await
-}
-
-/// Активация ключа доступа к платной сборке.
-#[tauri::command]
-pub async fn redeem_pack_key(slug: String, code: String) -> Result<serde_json::Value, String> {
-    engine::redeem_pack_key(&slug, &code).await
-}
-
-/// Наши готовые сборки — тот же список, что на сайте.
-#[tauri::command]
-pub async fn copper_packs() -> Result<serde_json::Value, String> {
-    engine::catalog_packs().await
-}
-
-/// Ready-made pack from the Copper catalogue. The webview names only the
-/// catalogue address; the file, the link and the hash are the core's business.
-#[tauri::command]
-pub async fn install_catalog_pack(app: tauri::AppHandle, slug: String) -> Result<engine::Profile, String> {
-    engine::install_catalog_pack(app, slug, false).await
-}
-
-/// Same pack, but the version that is still waiting to be reviewed.
-///
-/// A separate command instead of a flag on the previous one: the review channel
-/// must not be reachable by passing an extra field from the webview. The core
-/// asks the API, and the API answers only reviewers.
-#[tauri::command]
-pub async fn install_pack_candidate(app: tauri::AppHandle, slug: String) -> Result<engine::Profile, String> {
-    engine::install_catalog_pack(app, slug, true).await
-}
-
-/// The published version of a catalogue build in place of the installed one.
-/// The webview names only the build: which pack, which version and which file
-/// come from the build's own settings and from the catalogue.
-#[tauri::command]
-pub async fn update_catalog_pack(app: tauri::AppHandle, profile: String) -> Result<engine::Profile, String> {
-    engine::update_catalog_pack(app, profile).await
-}
-
-/// The catalogue card applied to an installed build: its icon and whether its
-/// contents are hidden. The webview names only the build.
-#[tauri::command]
-pub async fn sync_catalog_pack(profile: String) -> Result<bool, String> {
-    engine::sync_catalog_pack(profile).await
-}
-
-/// Builds whose author keeps the contents to themselves.
-#[tauri::command(async)]
-pub fn protected_builds() -> Vec<String> {
-    engine::protected_builds()
-}
-
-#[tauri::command(async)]
-pub fn pack_auto_update(profile: String) -> engine::PackAutoUpdate {
-    engine::pack_auto_update(&profile)
-}
-
-#[tauri::command(async)]
-pub fn set_pack_auto_update(profile: String, on: bool) -> Result<engine::PackAutoUpdate, String> {
-    engine::set_pack_auto_update(&profile, on)
-}
-
-/// Packs whose unreviewed versions this account may install.
-#[tauri::command]
-pub async fn pack_review_queue() -> Result<serde_json::Value, String> {
-    engine::pack_review_queue().await
-}
-
-/// Is there a version waiting for review, and what is known about it.
-#[tauri::command]
-pub async fn pack_review_candidate(slug: String) -> Result<serde_json::Value, String> {
-    engine::pack_review_candidate(&slug).await
-}
-
 #[tauri::command]
 pub async fn cf_install_modpack(app: tauri::AppHandle, mod_id: u32, file_id: Option<u64>) -> Result<engine::Profile, String> {
     engine::cf_install_modpack(app, mod_id, file_id).await
@@ -446,50 +351,4 @@ pub async fn import_dropped_pack(app: tauri::AppHandle, id: u64) -> Result<engin
     engine::import_pack_path(app, path).await
 }
 
-#[tauri::command]
-pub async fn share_profile(profile: String, summary: Option<String>) -> Result<engine::SharedPack, String> {
-    engine::share_profile(profile, summary).await
-}
 
-
-#[tauri::command]
-pub async fn unshare_profile(code: String) -> Result<(), String> {
-    engine::unshare_profile(code).await
-}
-
-/// What a code points at, before anything is downloaded.
-#[tauri::command]
-pub async fn pack_preview(code: String) -> Result<serde_json::Value, String> {
-    engine::pack_preview(code).await
-}
-
-#[tauri::command]
-pub async fn install_shared_pack(app: tauri::AppHandle, code: String) -> Result<engine::Profile, String> {
-    engine::install_shared_pack(app, code).await
-}
-
-#[tauri::command]
-pub async fn cloud_status() -> Result<engine::CloudStatus, String> {
-    engine::cloud_status().await
-}
-
-#[tauri::command]
-pub async fn cloud_push() -> Result<engine::CloudStatus, String> {
-    engine::cloud_push().await
-}
-
-/// `only` restores exactly the named builds, overwriting what is here;
-/// without it only builds missing on this machine are installed.
-#[tauri::command]
-pub async fn cloud_pull(
-    app: tauri::AppHandle,
-    only: Option<Vec<String>>,
-    apply_prefs: bool,
-) -> Result<engine::PullReport, String> {
-    engine::cloud_pull(app, only, apply_prefs).await
-}
-
-#[tauri::command]
-pub async fn cloud_forget() -> Result<(), String> {
-    engine::cloud_forget().await
-}

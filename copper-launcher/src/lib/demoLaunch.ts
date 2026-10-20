@@ -9,10 +9,9 @@
 import { useUi } from '../state/ui'
 import type { ScreenId } from '../state/ui'
 import { useGame } from '../state/game'
-import { useLobby } from '../state/lobbyMode'
 import { useProfiles } from '../state/profiles'
 
-const SCREENS: ScreenId[] = ['play', 'playhub', 'builds', 'skins', 'rubies', 'friends', 'settings', 'hosting', 'premium']
+const SCREENS: ScreenId[] = ['play', 'playhub', 'builds', 'mods', 'settings']
 
 function whenProfiles(run: (name: string) => void) {
   const first = useProfiles.getState().profiles[0]
@@ -27,7 +26,6 @@ function whenProfiles(run: (name: string) => void) {
 
 export function installLaunchDemo(kind: string | null, screen: string | null) {
   whenProfiles((name) => {
-    useLobby.getState().pick({ kind: 'build', name })
     if (kind === 'installing')
       useUi.getState().setPrelaunch({ open: true, sub: name, stage: 2, pct: 82, msg: null, mode: 'launch' })
     if (kind === 'running') useGame.getState().setList([name])

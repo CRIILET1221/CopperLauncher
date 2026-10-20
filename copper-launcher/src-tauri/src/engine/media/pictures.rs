@@ -28,10 +28,10 @@ fn too_big() -> String {
     format!("Картинка больше {} МБ", MAX_BYTES / 1024 / 1024)
 }
 
-/// Chat attachments live on the storage CDN (removed-service.invalid), the rest of the
-/// pictures on removed-service.invalid. Anything else the webview asks for is refused
-/// rather than fetched on its behalf.
-const OUR_DOMAINS: [&str; 2] = ["removed-service.invalid", "removed-service.invalid"];
+/// Remote pictures in the launcher are catalogue galleries: Modrinth and
+/// CurseForge CDNs. Anything else the webview asks for is refused rather than
+/// fetched on its behalf.
+const OUR_DOMAINS: [&str; 2] = ["cdn.modrinth.com", "forgecdn.net"];
 
 fn host_allowed(host: &str) -> bool {
     let h = host.to_ascii_lowercase();
@@ -198,11 +198,11 @@ mod tests {
 
     #[test]
     fn only_our_hosts_are_fetched() {
-        for host in ["removed-service.invalid", "removed-service.invalid", "removed-service.invalid", "removed-service.invalid"] {
-            assert!(host_allowed(host), "{} — наш хост, вложения лежат там", host);
+        for host in ["cdn.modrinth.com", "media.forgecdn.net", "edge.forgecdn.net"] {
+            assert!(host_allowed(host), "{} — CDN каталога, картинки галереи лежат там", host);
         }
-        for host in ["removed-service.invalid.evil.example", "evil.example", "notcopper.net", "cdncopper.trade"] {
-            assert!(!host_allowed(host), "{} только выглядит нашим — качать оттуда нельзя", host);
+        for host in ["cdn.modrinth.com.evil.example", "evil.example", "notforgecdn.net", "modrinth.com"] {
+            assert!(!host_allowed(host), "{} только выглядит CDN каталога — качать оттуда нельзя", host);
         }
     }
 
@@ -213,11 +213,11 @@ mod tests {
         let by_posix_path = PictureRef { url: None, path: Some("/home/p/.copper/shot.png".into()) };
         assert_eq!(name_of(&by_posix_path), "shot.png");
         let by_url = PictureRef {
-            url: Some("copper-disabled://removed-service/media/chat/my%20shot.png".into()),
+            url: Some("https://cdn.modrinth.com/data/x/images/my%20shot.png".into()),
             path: None,
         };
         assert_eq!(name_of(&by_url), "my shot.png");
-        let traversal = PictureRef { url: Some("copper-disabled://removed-service/media/..".into()), path: None };
+        let traversal = PictureRef { url: Some("https://cdn.modrinth.com/data/..".into()), path: None };
         assert_eq!(name_of(&traversal), "image.png", "«..» не должно стать именем файла");
         let empty = PictureRef { url: None, path: None };
         assert_eq!(name_of(&empty), "image.png");

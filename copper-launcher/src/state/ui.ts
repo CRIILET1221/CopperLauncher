@@ -4,22 +4,8 @@ import { playSound } from '../lib/sound'
 import { TOAST_TEXT_MAX, clipText } from '../lib/format'
 import type { SoundEvent } from '../lib/sound'
 
-export type ScreenId =
-  | 'play'
-  | 'premium'
-  | 'plus'
-  | 'builds'
-  | 'servers'
-  | 'mods'
-  | 'skins'
-  | 'rubies'
-  | 'friends'
-  | 'top'
-  | 'chat'
-  | 'hosting'
-  | 'playhub'
-  | 'game'
-  | 'settings'
+export type ScreenId = 'play' | 'builds' | 'mods' | 'playhub' | 'game' | 'settings'
+const SCREENS = new Set<string>(['play', 'builds', 'mods', 'playhub', 'game', 'settings'])
 export type ModalId =
   | 'nbModal'
   | 'bsModal'
@@ -118,7 +104,8 @@ export const useUi = create<UiState>((set, get) => ({
   setLogged: (_v) => set({ logged: true }),
   // Transition keeps the current screen mounted while the next chunk loads,
   // instead of flashing the empty Suspense fallback.
-  setScreen: (s) => startTransition(() => set({ screen: (['premium','plus','skins','rubies','chat','friends','hosting','top','servers'] as ScreenId[]).includes(s) ? 'builds' : s })),
+  // Старые адреса экранов (удалённые разделы) ведут на «Инстансы».
+  setScreen: (s) => startTransition(() => set({ screen: SCREENS.has(s) ? s : 'builds' })),
   showToast: (msg, kind, sound, action) => {
     const k = kind || (ERROR_RE.test(msg) ? 'error' : 'ok')
     // A build name or a server answer can be arbitrarily long; the toast is a
@@ -171,4 +158,3 @@ export const openModal = (id: ModalId) => useUi.getState().openModal(id)
 export const closeModal = (id: ModalId) => useUi.getState().closeModal(id)
 export const setScreen = (s: ScreenId) => useUi.getState().setScreen(s)
 export const enterApp = () => useUi.getState().setLogged(true)
-export const logoutToLogin = () => useUi.getState().setLogged(false)

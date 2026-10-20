@@ -95,20 +95,6 @@ export function listenDragState(handler: (active: boolean) => void): Promise<Unl
     .catch(() => null)
 }
 
-export function listenHostConsole(handler: (line: string) => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen<string>('host-console', (e) => handler(e.payload)).catch(() => null)
-}
-
-/// End of the log the node replays on connect. What came before it is history
-/// the server had already written, what comes after is live.
-export function listenHostConsoleReplayEnd(handler: () => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen('host-console-replay-end', () => handler()).catch(() => null)
-}
-
 // The core batches lines; a bare string is still accepted for older core builds.
 export function listenGameLog(handler: (lines: string[]) => void): Promise<UnlistenFn | null> {
   const T = tauri()
@@ -151,47 +137,8 @@ export interface CrashInfo {
   cause?: string
   logFile?: string
 }
-export interface PackAccessLost {
-  profile: string
-  message: string
-  removed: boolean
-}
-export function listenPackAccessLost(handler: (info: PackAccessLost) => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen<PackAccessLost>('pack-access-lost', (e) => handler(e.payload)).catch(() => null)
-}
 export function listenGameCrash(handler: (info: CrashInfo) => void): Promise<UnlistenFn | null> {
   const T = tauri()
   if (!T) return Promise.resolve(null)
   return T.event.listen<CrashInfo>('game-crash', (e) => handler(e.payload)).catch(() => null)
-}
-
-export function listenRealtimeRelay(handler: (payload: unknown) => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen<unknown>('realtime-relay', (e) => handler(e.payload)).catch(() => null)
-}
-
-export interface PartyVoiceState {
-  party: string
-  state: 'connected' | 'lost' | 'mic_failed' | 'device_fallback'
-  reason: string | null
-}
-
-export interface PartyVoiceLevels {
-  me: number
-  speakers: { userId: string; level: number }[]
-}
-
-export function listenPartyVoiceState(handler: (s: PartyVoiceState) => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen<PartyVoiceState>('party-voice://state', (e) => handler(e.payload)).catch(() => null)
-}
-
-export function listenPartyVoiceLevels(handler: (l: PartyVoiceLevels) => void): Promise<UnlistenFn | null> {
-  const T = tauri()
-  if (!T) return Promise.resolve(null)
-  return T.event.listen<PartyVoiceLevels>('party-voice://levels', (e) => handler(e.payload)).catch(() => null)
 }

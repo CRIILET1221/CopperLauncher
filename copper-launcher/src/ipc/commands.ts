@@ -230,7 +230,6 @@ export const storeGamesState = () => invoke<StoreGameState[]>('store_games_state
 export const storeGameOpen = (slug: string, via: 'steam' | 'steam-install' | 'store-page' | 'store') =>
   invoke<void>('store_game_open', { slug, via })
 export const storeGameInstall = (slug: string) => invoke<void>('store_game_install', { slug })
-export const bedrockJoin = (host: string, port: number) => invoke<void>('bedrock_join', { host, port })
 
 export const addLocalFile = (profile: string, kind: string, path: string) =>
   invoke<string>('add_local_file', { profile, kind, path })
@@ -385,20 +384,6 @@ export const cfFiles = (modId: number, gameVersion = '') =>
 export const cfInstallWorld = (modId: number, profile: string, force = false) =>
   invoke<WorldInstall>('cf_install_world', { modId, profile, force })
 
-/**
- * Файл каталога Copper (мод, пак, шейдер, дата-пак, карта) в сборку. Ссылку —
- * подписанную для платного — ядро берёт само: webview называет только сборку,
- * материал и id файла.
- */
-export const installCatalogFile = (
-  profile: string,
-  kind: string,
-  slug: string,
-  fileId: string,
-  title: string,
-  sha1?: string | null,
-) => invoke<ContentInstall>('install_catalog_file', { profile, kind, slug, fileId, title, sha1: sha1 || null })
-
 export const cfSearch = (
   query: string,
   kind: string,
@@ -476,9 +461,7 @@ export const discordPresence = (
   playing: boolean,
   largeImage?: string,
   largeText?: string,
-  joinUrl?: string,
-  profileSlug?: string,
-) => invoke<DiscordStatus>('discord_presence', { details, state, playing, largeImage, largeText, joinUrl, profileSlug })
+) => invoke<DiscordStatus>('discord_presence', { details, state, playing, largeImage, largeText })
 
 export const discordStatus = () => invoke<DiscordStatus>('discord_status')
 
@@ -524,53 +507,6 @@ export const importInstance = (path: string, name: string, version: string, load
 export const importPackFile = (path?: string) => invoke<Profile>('import_pack_file', { path: path || null })
 
 export const importDroppedPack = (id: number) => invoke<Profile>('import_dropped_pack', { id })
-/// Установка из каталога Copper. Вебвью называет материал и файл, адрес файла
-/// ядро узнаёт у API само (engine/content/copper.rs).
-export interface CatalogInstallReq {
-  slug: string
-  title: string
-  icon?: string
-  via: 'file' | 'curated'
-  article?: string
-  section?: string
-  fileId: string
-  profile?: string
-  kind: string
-  versionLabel?: string
-  sha1?: string
-  sha256?: string
-  size?: number
-  game?: string
-  loader?: string
-  loaderVersion?: string
-}
-
-export interface CatalogInstall {
-  file: string
-  profile: Profile | null
-}
-
-export const catalogInstall = (req: CatalogInstallReq) => invoke<CatalogInstall>('catalog_install', { req })
-
-/// Материал каталога с зависимостями по плану API (engine/content/copper_plan.rs).
-export interface CatalogPlanReq {
-  slug: string
-  title: string
-  icon?: string
-  profile: string
-  kind: string
-  /// Необязательные зависимости, отмеченные человеком (slug каталога).
-  optional?: string[]
-}
-
-export interface CatalogPlanDone {
-  file: string
-  installed: string[]
-  skipped: string[]
-  missing: string[]
-}
-
-export const catalogInstallPlan = (req: CatalogPlanReq) => invoke<CatalogPlanDone>('catalog_install_plan', { req })
 
 export const installContent = (
   project: string,
@@ -587,90 +523,6 @@ export const installModpack = (slug: string) => invoke<Profile>('install_modpack
 
 export const installModpackVersion = (slug: string, versionId: string) =>
   invoke<Profile>('install_modpack_version', { slug, versionId })
-
-/** Готовая сборка каталога Copper: ставится только отсюда, файла в вебе нет. */
-export const installCatalogPack = (slug: string) => invoke<Profile>('install_catalog_pack', { slug })
-
-/** The core resolves pack, version and file from the build's settings: the webview names only the build. */
-export const updateCatalogPack = (profile: string) => invoke<Profile>('update_catalog_pack', { profile })
-/** Card icon and content protection onto an installed catalogue build; true when something changed. */
-export const syncCatalogPack = (profile: string) => invoke<boolean>('sync_catalog_pack', { profile })
-export const protectedBuilds = () => invoke<string[]>('protected_builds')
-
-export interface PackAutoUpdate {
-  catalog: boolean
-  on: boolean
-  modified: boolean
-  chosen: boolean | null
-}
-
-export const packAutoUpdate = (profile: string) => invoke<PackAutoUpdate>('pack_auto_update', { profile })
-export const setPackAutoUpdate = (profile: string, on: boolean) =>
-  invoke<PackAutoUpdate>('set_pack_auto_update', { profile, on })
-
-export interface PackCandidate {
-  fileId: string
-  version: string
-  side: string
-  size: number
-  sha512: string | null
-  report: unknown
-  launchChecked: { ok: boolean; at: string } | null
-}
-
-/**
- * Версия сборки, которая ждёт проверки. Для всех, кроме проверяющих, ответ
- * пустой — кнопка появляется только у них, и не потому, что мы её прячем.
- */
-export const packReviewCandidate = (slug: string) =>
-  invoke<{ slug: string; title?: string; candidate: PackCandidate | null }>('pack_review_candidate', { slug })
-
-export interface PackReviewItem {
-  slug: string
-  title: string
-  fileId: string
-  version: string
-  size: number
-  launchChecked: { ok: boolean; at: string } | null
-}
-
-/** Что ждёт проверки лично у меня. У игрока список пустой. */
-export const packReviewQueue = () => invoke<PackReviewItem[]>('pack_review_queue')
-
-/** Поставить версию с проверки: запустить её и есть вся работа проверяющего. */
-export const installPackCandidate = (slug: string) =>
-  invoke<Profile>('install_pack_candidate', { slug })
-
-export interface CopperPack {
-  slug: string
-  title: string
-  summary: string
-  cover: string | null
-  downloads: number
-  game: string
-  loader: string
-  /** Платная сборка: ставится по доступу на аккаунте. */
-  accessRequired: boolean
-  hasServer: boolean
-  /** Кто собрал. Пусто — подписи нет. */
-  author?: string | null
-  /** Draft shown only to this account's reviewers. */
-  preview?: boolean
-  partner?: { slug: string; name: string } | null
-  /** Players right now, polled by the server from the partner's own counter. */
-  online?: number | null
-}
-
-/** Наши сборки для списка «Контент» — рядом с Modrinth и CurseForge. */
-export const copperPacks = () => invoke<CopperPack[]>('copper_packs')
-
-/** Активация ключа доступа к платной сборке. */
-export const packBuyUrl = (slug: string) => invoke<string>('pack_buy_url', { slug })
-export const redeemPackKey = (slug: string, code: string) =>
-  invoke<{ ok: boolean; already: boolean }>('redeem_pack_key', { slug, code })
-
-/** Признак отказа по доступу: по нему открывается окно ввода ключа. */
-export const PACK_ACCESS_PREFIX = 'pack-access: '
 
 export interface MigrateItem {
   file_name: string
@@ -776,22 +628,7 @@ export const fpsBoostState = (profile: string) => invoke<FpsBoostState>('fps_boo
 export const setFpsBoost = (profile: string, on: boolean, keepOptions = false) =>
   invoke<FpsBoostState>('set_fps_boost', { profile, on, keepOptions })
 
-export const copperApi = <T = unknown>(path: string, method: string, body?: unknown) =>
-  invoke<T>('copper_api', { path, method, body: body === undefined ? null : body })
-
-export interface CopperLoginPoll {
-  status: 'pending' | 'ok' | 'denied' | 'expired'
-  user?: { id: string; email: string; nickname: string | null } | null
-  channel?: string
-}
-
-// The issued tokens stay in the core vault; only the signed-in user comes back.
-export const copperLoginPoll = (deviceCode: string) => invoke<CopperLoginPoll>('copper_login_poll', { deviceCode })
-
-export const copperLogout = () => invoke<void>('copper_logout')
-
 export interface SessionStatus {
-  copper: boolean
   accounts: Record<string, boolean>
 }
 
@@ -861,10 +698,6 @@ export const stopGame = (profile?: string | null) => invoke<void>('stop_game', {
 
 export const runningGames = () => invoke<string[]>('running_games')
 
-export const setGameInvite = (slug: string, code: string) => invoke<boolean>('set_game_invite', { slug, code })
-
-export const claimGameInvites = () => invoke<string[]>('claim_game_invites')
-
 export const gameDir = () => invoke<string>('game_dir')
 
 export const setGameDir = (path: string, moveData: boolean) => invoke<string>('set_game_dir', { path, moveData })
@@ -909,35 +742,10 @@ export const saveProfileSettings = (
   javaPath: string,
 ) => invoke<void>('save_profile_settings', { profile, jvmArgs, width, height, javaPath })
 
-export interface MilliOptionsReport {
-  written: string[]
-  kept: string[]
-  rejected: string[]
-  shader: boolean
-}
-
-/** Настройки сборки Милли: options.txt (белый список) и включённый шейдер. Ядро без команды — ошибка «not found». */
-export const applyMilliOptions = (
-  profile: string,
-  options: Record<string, string>,
-  shader: { loader: 'iris' | 'oculus'; file: string } | null,
-) => invoke<MilliOptionsReport>('apply_milli_options', { profile, options, shader })
-
 export const setProfileGpu = (profile: string, pref: GpuPref) =>
   invoke<GpuPref>('set_profile_gpu', { profile, pref })
 
 export const gpuSwitchSupported = () => invoke<boolean>('gpu_switch_supported')
-
-export interface SkinModState {
-  on: boolean
-  present: boolean
-  conflict: string | null
-}
-
-export const skinModState = (profile: string) => invoke<SkinModState>('skin_mod_state', { profile })
-
-export const setSkinMod = (profile: string, on: boolean) =>
-  invoke<SkinModState>('set_skin_mod', { profile, on })
 
 export const setProfileJavaMajor = (profile: string, major: number | null) =>
   invoke<string>('set_profile_java_major', { profile, major })
@@ -1076,71 +884,10 @@ export const readCrashes = () => invoke<CrashEntry[]>('read_crashes')
 
 export const clearCrashes = () => invoke<void>('clear_crashes')
 
-export const hostConsoleStart = (id: string) => invoke<void>('host_console_start', { id })
-export const hostConsoleStop = () => invoke<void>('host_console_stop')
-
-// Server files need an authenticated request the webview cannot make.
-export const hostDownload = (id: string, path?: string) =>
-  invoke<string | null>('host_download', { id, path: path ?? null })
-export const hostUpload = (id: string, dir: string) => invoke<string | null>('host_upload', { id, dir })
-
 export interface PingResult { online: number; max: number; motd: string; version: string; favicon: string | null; ms: number }
 export const pingServer = (addr: string) => invoke<PingResult>('ping_server', { addr })
 export interface RepairReport { checked: number; restored: number; broken: string[]; refused: string[] }
 export const repairProfile = (profile: string) => invoke<RepairReport>('repair_profile', { profile })
-
-export const setLocalSkin = (skin: string | null, cape: string | null, slim: boolean) =>
-  invoke<void>('set_local_skin', { skin, cape, slim })
-
-export interface SkinDiagBuild {
-  build: string
-  mc: string
-  loader: string
-  state: string
-  text: string
-  conflict: string | null
-  offReason: string | null
-  playedAt: number | null
-  agentSeen: boolean | null
-  root: string | null
-  rootStale: boolean
-  problems: string[]
-}
-export interface SkinDiagServer {
-  ok: boolean
-  reason?: string
-  skin?: boolean
-  cape?: boolean
-  skinReadable?: boolean
-  capeReadable?: boolean
-}
-// The account route: what a vanilla build depends on entirely.
-export interface SkinDiagSession {
-  ok: boolean
-  agent: boolean
-  profile: boolean
-  signed?: boolean
-  skin?: boolean
-  cape?: boolean
-  domainOk?: boolean
-  textureOk?: boolean
-}
-// What the launcher can put right by itself, and in which build: the report
-// names it so the modal offers one button instead of a route into settings.
-export interface SkinDiagFix {
-  action: 'enable_mod'
-  build: string
-}
-export interface SkinDiag {
-  nick: string
-  verdict: string
-  text: string
-  fix: SkinDiagFix | null
-  server: SkinDiagServer | null
-  session: SkinDiagSession | null
-  builds: SkinDiagBuild[]
-}
-export const skinDiagnose = (nick: string, online: boolean) => invoke<SkinDiag>('skin_diagnose', { nick, online })
 
 // Textures live on disk: localStorage hit the webview quota and lost them silently.
 export interface TextureEntry {
@@ -1180,38 +927,6 @@ export const trayAvailable = () => invoke<boolean>('tray_available')
 export const hideToTray = () => invoke<void>('hide_to_tray')
 export const showFromTray = () => invoke<void>('show_from_tray')
 export const setRestoreOnExitNative = (on: boolean) => invoke<void>('set_restore_on_exit', { on })
-
-export interface OverlayState { enabled: boolean; toasts: boolean; hotkey: string; cardMs: number }
-
-export interface OverlayCard {
-  uid: string
-  nick: string
-  text: string
-  ts: number
-  kind?: 'msg' | 'online' | 'play' | 'streak'
-  nicks?: string[]
-  // Where a click on the card should land; without it the card is just a notice.
-  open?: 'chat' | 'room' | 'friends' | 'call' | 'daily'
-}
-export const overlayState = () => invoke<OverlayState>('overlay_state')
-export const overlaySetEnabled = (on: boolean) => invoke<void>('overlay_set_enabled', { on })
-export const overlaySetHotkey = (hotkey: string) => invoke<void>('overlay_set_hotkey', { hotkey })
-export const overlayNotify = (payload: OverlayCard) => invoke<void>('overlay_notify', { payload })
-export const overlaySetToasts = (on: boolean) => invoke<void>('overlay_set_toasts', { on })
-export const overlaySetCardMs = (ms: number) => invoke<void>('overlay_set_card_ms', { ms })
-export const overlayToast = (payload: OverlayCard) => invoke<void>('overlay_toast', { payload })
-export const overlayHide = () => invoke<void>('overlay_hide')
-export const overlayReady = () => invoke<void>('overlay_ready')
-export const overlayCleared = (seq: number) => invoke<void>('overlay_cleared', { seq })
-export const overlayHitAreas = (rects: number[][]) => invoke<void>('overlay_hit_areas', { rects })
-export const overlayOpen = (payload: OverlayCard, toLauncher = false) =>
-  invoke<void>('overlay_open', { payload, toLauncher })
-export interface RealtimeRelayState {
-  relay: boolean
-  live: boolean
-}
-export const realtimeRelay = (payload: unknown) => invoke<void>('realtime_relay', { payload })
-export const realtimeRelayState = () => invoke<RealtimeRelayState>('realtime_relay_state')
 
 
 // ---- Shared file store across builds ----
@@ -1347,106 +1062,6 @@ export const applyCrashFix = (profile: string, kind: string, arg: string) =>
 
 // ---- Sharing a build ----
 
-export interface SharedPack {
-  code: string
-  url: string
-  files: number
-  skipped: string[]
-  sizeBytes: number
-}
-
-export interface PackPreview {
-  code: string
-  name: string
-  summary: string
-  game: string
-  loader: string
-  files: number
-  author: string
-  installs: number
-  updatedAt: string
-  sizeBytes: number
-  mods?: PackPreviewFile[]
-  overrides?: string[]
-  dropped?: string[]
-}
-
-export interface PackPreviewFile {
-  name: string
-  kind: string
-  source: 'modrinth' | 'curseforge' | 'copper' | 'unknown'
-  size: number
-}
-
-export const shareProfile = (profile: string, summary?: string) =>
-  invoke<SharedPack>('share_profile', { profile, summary })
-export const unshareProfile = (code: string) => invoke<void>('unshare_profile', { code })
-export const packPreview = (code: string) => invoke<PackPreview>('pack_preview', { code })
-export const installSharedPack = (code: string) => invoke<Profile>('install_shared_pack', { code })
-
 // ---- Cloud sync ----
-
-export interface CloudStatus {
-  signedIn: boolean
-  hasRemote: boolean
-  updatedAt: string
-  device: string
-  remoteProfiles: number
-  localProfiles: number
-  sizeBytes: number
-  missingHere: string[]
-  missingThere: string[]
-}
-
-export interface PullReport {
-  installed: string[]
-  updated: string[]
-  failed: string[]
-  prefsApplied: number
-}
-
-export const cloudStatus = () => invoke<CloudStatus>('cloud_status')
-export const cloudPush = () => invoke<CloudStatus>('cloud_push')
-// only — reinstall exactly these builds over the local ones; without it only
-// builds missing on this machine are installed.
-export const cloudPull = (only: string[] | null, applyPrefs: boolean) =>
-  invoke<PullReport>('cloud_pull', { only, applyPrefs })
-export const cloudForget = () => invoke<void>('cloud_forget')
-
-export interface CopperModState {
-  installed: string
-  available: string
-  version: string
-  loader: string
-  game_version: string
-  reason: string
-  enabled: boolean
-}
-
-export const copperModState = (profile: string) => invoke<CopperModState>('copper_mod_state', { profile })
-export const copperModInstall = (profile: string) => invoke<CopperModState>('copper_mod_install', { profile })
-export const copperModEnabled = () => invoke<boolean>('copper_mod_enabled')
-export const setCopperModEnabled = (on: boolean) => invoke<void>('set_copper_mod_enabled', { on })
-export const pvpHudDefault = () => invoke<boolean>('pvp_hud_default')
-export const setPvpHudDefault = (on: boolean) => invoke<void>('set_pvp_hud_default', { on })
-
-/// Party voice over the Copper relay. Only the party and member ids cross the
-/// bridge; the ticket, secret and relay address stay in the core.
-/** Device labels, not webview ids: the core finds devices by name. */
-export interface PartyVoiceAudio {
-  input: string | null
-  output: string | null
-  noise: 'off' | 'standard' | 'strong'
-  agc: boolean
-  micGain: number
-}
-export const partyVoiceJoin = (partyId: string, members: string[], audio: PartyVoiceAudio) =>
-  invoke<void>('party_voice_join', { partyId, members, audio })
-export const partyVoiceAudio = (audio: PartyVoiceAudio) => invoke<void>('party_voice_audio', { audio })
-export const partyVoiceLeave = () => invoke<void>('party_voice_leave', {})
-export const partyVoiceTransmit = (open: boolean) => invoke<void>('party_voice_transmit', { open })
-export const partyVoiceDeafen = (on: boolean) => invoke<void>('party_voice_deafen', { on })
-export const partyVoiceMembers = (members: string[]) => invoke<void>('party_voice_members', { members })
-export const partyVoiceBind = (partyId: string | null) => invoke<void>('party_voice_bind', { partyId })
 
 export const readSkinPng = (path: string) => invoke<string>('read_skin_png', { path })

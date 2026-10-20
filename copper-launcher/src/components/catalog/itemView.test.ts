@@ -74,7 +74,7 @@ describe('заглушки', () => {
   })
   it('каждый блок заглушки есть в public/block-icons', () => {
     const have = new Set(readdirSync('public/block-icons'))
-    for (const n of FALLBACK_BLOCKS) expect(have.has('Block' + n + 'Copper.png')).toBe(true)
+    for (const n of FALLBACK_BLOCKS) expect(have.has('Block' + n + 'Copper.svg')).toBe(true)
   })
 })
 

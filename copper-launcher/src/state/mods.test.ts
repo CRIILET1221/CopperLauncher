@@ -2,7 +2,6 @@ import { expect, mock, test } from 'bun:test'
 
 let hasTauriNow = false
 let cfDelayMs = 0
-let packsNow: unknown[] = []
 
 mock.module('../ipc/tauri', () => ({ hasTauri: () => hasTauriNow }))
 mock.module('../ipc/commands', () => ({
@@ -12,8 +11,6 @@ mock.module('../ipc/commands', () => ({
   },
   listContent: async () => [],
   listWorldInstalls: async () => [],
-  copperPacks: async () => packsNow,
-  packReviewQueue: async () => [],
 }))
 mock.module('../lib/api', () => ({ MODRINTH_API: 'https://modrinth.test', mirrorAsset: (u: string) => u }))
 mock.module('./profiles', () => ({ useProfiles: { getState: () => ({ profiles: [], selected: '' }) } }))
@@ -102,42 +99,3 @@ test('CurseForge и Modrinth спрашиваются разом, а не по �
   expect(useMods.getState().hits.length).toBeGreaterThan(0)
 })
 
-// Вход → вердикт: чья работа, того и подпись. Сборки каталога собирали не мы, и
-// своё имя под ними было бы присвоением чужого труда; у кого автор не указан,
-// подписи нет вовсе, а не «Copper» по умолчанию.
-test('сборка подписана своим автором, а без автора не подписана никем', async () => {
-  hasTauriNow = true
-  packsNow = [
-    { slug: 'komam', title: 'KoMaM', summary: '', cover: null, downloads: 0, game: '1.20.1', loader: 'forge', accessRequired: true, hasServer: false, author: 'MCSborki' },
-    { slug: 'arcania', title: 'Arcania', summary: '', cover: null, downloads: 0, game: '1.20.1', loader: 'forge', accessRequired: true, hasServer: false, author: null },
-  ]
-  clearCatalogCache()
-  useMods.setState({ modTab: 'copper', mq: '', hits: [] })
-  await useMods.getState().load()
-  await wait(30)
-
-  const by = new Map(useMods.getState().hits.map((h) => [h.title, h.author]))
-  expect(by.get('KoMaM')).toBe('MCSborki')
-  expect(by.get('Arcania'), 'без автора подпись пустая, а не наше имя').toBe('')
-  hasTauriNow = false
-  packsNow = []
-})
-
-// Вход → вердикт: во вкладке премиума видна только сборка по ключу. Иначе слово
-// «премиум» стоит над бесплатными сборками, а платная теряется среди них.
-test('во вкладке премиума только сборка по ключу доступа', async () => {
-  hasTauriNow = true
-  packsNow = [
-    { slug: 'arcania', title: 'Arcania', summary: '', cover: null, downloads: 0, game: '1.20.1', loader: 'forge', accessRequired: true, hasServer: false },
-    { slug: 'free', title: 'Обычная сборка', summary: '', cover: null, downloads: 0, game: '1.20.1', loader: 'fabric', accessRequired: false, hasServer: false },
-  ]
-  clearCatalogCache()
-  useMods.setState({ modTab: 'copper', mq: '', hits: [] })
-  await useMods.getState().load()
-  await wait(30)
-
-  const shown = useMods.getState().hits.map((h) => h.title)
-  expect(shown, 'бесплатная сборка не должна называться премиумом').toEqual(['Arcania'])
-  hasTauriNow = false
-  packsNow = []
-})

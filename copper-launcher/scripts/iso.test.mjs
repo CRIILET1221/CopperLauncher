@@ -48,7 +48,7 @@ describe('assertVolumeName', () => {
   test('Joliet обрезал имя до 16 символов — валит сборку', () => {
     const { path, dir } = image([
       descriptor(1, 'Copper Launcher 1.0.97 ARM'),
-      descriptor(2, 'Copper Launcher'),
+      descriptor(2, 'Copper Launcher '),
     ])
     try {
       expect(() => assertVolumeName(path, 'Copper Launcher 1.0.97 ARM')).toThrow(/Joliet «Copper Launcher»/)

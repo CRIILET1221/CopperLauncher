@@ -7,12 +7,8 @@ import { useProfiles } from '../state/profiles'
 import { closeModal, openModal, showToast, useUi } from '../state/ui'
 import { foundKey } from '../lib/imports'
 import { backdropClose } from '../lib/dismiss'
-import { usePackCode } from '../state/packCode'
-import { showReward } from '../components/reward/RewardReveal'
-import { BuildIcon } from '../components/playhub/BuildIcon'
 
-const imported = (p: { name: string; icon?: string | null }) =>
-  showReward({ level: 'mid', items: [{ name: p.name, art: <BuildIcon icon={p.icon} name={p.name} size={60} /> }], title: 'Сборка импортирована', sub: p.name })
+const imported = (p: { name: string }) => showToast('Сборка «' + p.name + '» импортирована', 'ok', 'achievement')
 
 /// Где ищем сборки — показываем значками вместо абзаца со списком.
 const SOURCES = ['Prism', 'MultiMC', 'CurseForge', 'GDLauncher', 'ATLauncher', 'Modrinth App', 'TLauncher']
@@ -210,18 +206,7 @@ export function ImportModal() {
             <b>{fileBusy ? 'Добавляем…' : 'Из файла'}</b>
             <span>.mrpack · .zip</span>
           </button>
-          <button
-            className="imp-way"
-            data-sound="open"
-            onClick={() => {
-              close()
-              usePackCode.getState().show()
-            }}
-          >
-            <Icon id="i-link" />
-            <b>По коду</b>
-            <span>AB23-CD45</span>
-          </button>
+
         </div>
         <div style={{ display: 'flex', marginTop: '14px', justifyContent: 'flex-end' }}>
           <button className="btn md secondary" id="impClose" data-sound="close" onClick={close}>

@@ -42,6 +42,27 @@ pub struct RepairReport {
 }
 
 /// Where a damaged file may be restored from.
+/// Hosts a recorded download may point at. The file is verified by digest
+/// anyway, but a digest cannot stop the launcher from being aimed at an
+/// intranet address, so the address itself is checked first.
+const FILE_HOSTS: [&str; 5] = [
+    "cdn.modrinth.com",
+    "api.modrinth.com",
+    "mediafilez.forgecdn.net",
+    "edge.forgecdn.net",
+    "media.forgecdn.net",
+];
+
+/// «Починить» restores a mod only from these hosts: the record it reads sits
+/// in the game folder, where archives and imports can put their own.
+pub(crate) fn url_allowed(raw: &str) -> bool {
+    let Ok(url) = url::Url::parse(raw) else { return false };
+    if url.scheme() != "https" {
+        return false;
+    }
+    url.host_str().map(|h| FILE_HOSTS.contains(&h)).unwrap_or(false)
+}
+
 #[derive(Debug, PartialEq)]
 enum RestoreFrom {
     Nowhere,

@@ -3,7 +3,7 @@ import { addServer, pingServer } from '../ipc/commands'
 import { getAccount } from '../state/accounts'
 import { ensureMsAuth } from '../state/msLogin'
 import { useProfiles } from '../state/profiles'
-import { useServers } from '../state/servers'
+
 import { setNewBuildPreset } from '../state/newBuild'
 import type { JoinIntent } from '../state/newBuild'
 import { rememberServerName } from '../state/playStats'
@@ -16,7 +16,7 @@ import { pickBuildForJoin } from '../state/buildPicker'
 import { ensureVersionBuild } from './versionBuild'
 import { pickVersionForServer } from './mcVersion'
 import { ensureMcVersionList, useMcVersionList } from '../state/mcVersionList'
-import { isOwnServerAddr } from './ownServer'
+
 
 const addrKey = (ip: string) =>
   (ip || '')
@@ -27,10 +27,8 @@ const addrKey = (ip: string) =>
 const pingedVersions = new Map<string, string[]>()
 
 /**
- * Версию знает не только рейтинг: на свой хостинг, к другу и по ссылке из
- * Discord игрок заходит мимо каталога, и раньше в таких случаях запускалась
- * текущая сборка любой версии. Спрашиваем сам сервер — он отвечает точной
- * версией; ответ держим до конца сеанса, чтобы повторный вход не ждал снова.
+ * Версию спрашиваем у самого сервера — он отвечает точной версией; ответ
+ * держим до конца сеанса, чтобы повторный вход не ждал снова.
  */
 async function versionsFromPing(ip: string): Promise<string[]> {
   const key = addrKey(ip)
@@ -50,12 +48,6 @@ async function versionsFromPing(ip: string): Promise<string[]> {
   return out
 }
 
-function versionsForAddr(ip: string): string[] {
-  const key = addrKey(ip)
-  if (!key) return []
-  const hit = useServers.getState().list.find((s) => addrKey(s.ip) === key)
-  return serverVersions(hit ? hit.versions : null)
-}
 
 function offerBuild(version: string, join: JoinIntent) {
   setNewBuildPreset({ version, name: join.name.slice(0, 24), join })
@@ -73,7 +65,7 @@ async function licenseGate(licensed: boolean): Promise<boolean> {
     : acc
       ? acc.kind === 'offline'
         ? 'офлайн-ник'
-        : 'аккаунт Copper'
+        : 'нелицензионный аккаунт'
       : 'вход без аккаунта'
   return uiConfirm(
     'Этот сервер пускает только по лицензии Minecraft, а сейчас активен ' +
@@ -179,8 +171,7 @@ export async function quickJoin(ip: string, name: string, licensed?: boolean, ve
     showToast('Подключение к серверу доступно в приложении', 'error')
     return Promise.reject(new Error('no-tauri'))
   }
-  if (isOwnServerAddr(ip)) return (await import('./lobbyPlay')).playOwnServer(useProfiles.getState().profiles)
-  let wanted = versions && versions.length ? serverVersions(versions) : versionsForAddr(ip)
+  let wanted = versions && versions.length ? serverVersions(versions) : []
   if (!wanted.length) wanted = await versionsFromPing(ip)
   const prof = await buildForServer({ ip, name, licensed, versions: wanted }, wanted)
   if (!prof) return Promise.reject(new Error('no-profile'))

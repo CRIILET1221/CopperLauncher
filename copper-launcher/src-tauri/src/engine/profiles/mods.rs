@@ -97,9 +97,6 @@ pub fn toggle_content(profile: &str, kind: &str, name: &str, enable: bool) -> Re
     let off = safe_child(&dir, &format!("{}.disabled", file))?;
     let (from, to) = if enable { (off, on) } else { (on, off) };
     if from.exists() { std::fs::rename(&from, &to).map_err(file_busy)?; }
-    if kind == "mod" && is_injected_skin_mod(&file) {
-        set_skin_mod(profile, enable)?;
-    }
     Ok(())
 }
 pub fn toggle_mod(profile: &str, name: &str, enable: bool) -> Result<(), String> { toggle_content(profile, "mod", name, enable) }
@@ -142,7 +139,6 @@ pub fn delete_profile(name: &str) -> Result<Vec<Profile>, String> {
 /// Playtime and groups live outside the profile folder and are keyed by name, so
 /// a rebuilt profile with the same name inherited them.
 fn forget_profile_side_data(name: &str) {
-    forget_pack_launch(name);
     set_profile_group(name, "");
     forget_playtime(name);
 }

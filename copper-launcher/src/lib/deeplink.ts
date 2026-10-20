@@ -2,29 +2,15 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { hasTauri } from '../ipc/tauri'
 import { setScreen, showToast } from '../state/ui'
 import { uiConfirm } from '../state/confirm'
-import { useServerDetail } from '../state/serverDetail'
-import { useServers } from '../state/servers'
 import { useMods } from '../state/mods'
 import { openProject } from '../state/project'
 import { setNewBuildPreset } from '../state/newBuild'
 import { openModal } from '../state/ui'
 import { useProfiles } from '../state/profiles'
-import { usePackCode } from '../state/packCode'
-import { runInstall } from '../state/installs'
-import { PACK_ACCESS_PREFIX, installCatalogPack } from '../ipc/commands'
-import { usePackKey } from '../state/packKey'
-import { keyCatalogPack } from './installKeys'
-import { useFriends, openChatFromLink, loadFriends } from '../state/friends'
-import { callFriend } from '../state/call'
 import { rememberServerName } from '../state/playStats'
 import { quickJoin } from './joinServer'
 import { realLaunch } from './launch'
 import { restoreLauncher } from './window'
-import { rememberInviteCode } from './referrals'
-import { pickFriendsTab } from '../components/friends/friendsView'
-import { parseInstallLink } from './copperCatalog'
-import { installFromCatalog } from './catalogInstall'
-import { openGameFromLink } from './gameInvite'
 
 function handle(raw: string) {
   let url: URL
@@ -59,17 +45,6 @@ function handle(raw: string) {
     })
     return
   }
-  if (action === 'server') {
-    setScreen('servers')
-    const slug = rest || q.get('slug') || ''
-    const found = useServers.getState().list.find((s) => s.slug === slug)
-    if (found) useServerDetail.getState().open(found)
-    return
-  }
-  if (action === 'hosting') {
-    setScreen('hosting')
-    return
-  }
   if (action === 'play') {
     const profile = decodeURIComponent(rest || q.get('build') || '')
     const exists = useProfiles.getState().profiles.some((p) => p.name === profile)
@@ -97,25 +72,6 @@ function handle(raw: string) {
     openModal('nbModal')
     return
   }
-  // «Установить» на copper.net: материал каталога Copper по его slug.
-  // copper://modpack/<slug> — прежняя кнопка сборок сайта, тот же каталог.
-  if (action === 'install') {
-    const link = parseInstallLink(action, rest, q)
-    if (!link) {
-      showToast('Ссылка на установку не распознана', 'error')
-      return
-    }
-    if (link.section === 'modpacks') setScreen('builds')
-    else if (link.section !== 'skins' && link.section !== 'capes') setScreen('mods')
-    void installFromCatalog(link.section, link.slug, {
-      versions: link.versions,
-      loaders: link.loaders,
-      fromLink: true,
-      name: link.name,
-      slim: link.slim,
-    }).catch((e) => showToast('' + e, 'error'))
-    return
-  }
   if (action === 'project') {
     const slug = rest || q.get('slug') || ''
     if (!slug) return
@@ -123,85 +79,6 @@ function handle(raw: string) {
     useMods.getState().scopeTo(null)
     void openProject(slug, q.get('type') === 'modpack' ? 'modpack' : 'mod')
     return
-  }
-  if (action === 'pack') {
-    const code = rest || q.get('code') || ''
-    if (!code) return
-    setScreen('builds')
-    usePackCode.getState().show(code)
-    return
-  }
-  // Готовая сборка каталога: сайт не отдаёт её файлом, установка живёт только
-  // здесь. Как и «join», ссылку может открыть любая страница, поэтому спрашиваем
-  // до того, как качать гигабайты.
-  if (action === 'modpack') {
-    const slug = rest || q.get('slug') || ''
-    if (!slug) return
-    setScreen('builds')
-    const title = q.get('name') || slug
-    void uiConfirm(title === slug ? `Установить сборку «${slug}»?` : `Установить сборку «${title}» (${slug})?`, {
-      title: 'Copper',
-      confirmLabel: 'Установить',
-      danger: false,
-    }).then((ok) => {
-      if (ok) installPackFromLink(slug, title)
-    })
-    return
-  }
-  // copper.net/play/<slug> hands off here; the core alone decides whether the invite is valid.
-  if (action === 'game') {
-    const slug = rest.split('/')[0] || q.get('slug') || ''
-    if (!slug) return
-    openGameFromLink(slug, q.get('invite') || '')
-    return
-  }
-  if (action === 'skins') {
-    setScreen('skins')
-    return
-  }
-  if (action === 'friends') {
-    setScreen('friends')
-    return
-  }
-  if (action === 'invite') {
-    rememberInviteCode(rest || q.get('code') || '')
-    setScreen('friends')
-    pickFriendsTab('invite')
-    return
-  }
-  // The website hands off to the launcher for anything the browser cannot do:
-  // opening a specific conversation and placing a call. Without a target id
-  // these fall back to the friends screen rather than doing nothing.
-  if (action === 'chat') {
-    const uid = rest || q.get('user') || ''
-    setScreen('friends')
-    if (uid) void openChatFromLink(uid).catch(() => {})
-    return
-  }
-  if (action === 'call') {
-    const uid = rest || q.get('user') || ''
-    setScreen('friends')
-    if (!uid) return
-    // Звоним только друзьям и называем их по нику из списка друзей: ник из
-    // ссылки мог подсунуть кто угодно (аудит 24.09.2026).
-    const find = () => useFriends.getState().friends.find((f) => f.userId === uid)
-    // При холодном старте список друзей ещё не загружен.
-    void (find() ? Promise.resolve() : loadFriends().catch(() => {})).then(() => {
-      const friend = find()
-      if (!friend) {
-        showToast('Позвонить по ссылке можно только другу', 'error')
-        return
-      }
-      const nick = friend.nickname || ''
-      // Any web page can fire a copper:// link, so calling someone asks first.
-      void uiConfirm(`Позвонить ${nick || 'этому игроку'}?`, {
-        title: 'Copper',
-        confirmLabel: 'Позвонить',
-        danger: false,
-      }).then((ok) => {
-        if (ok) void callFriend(uid, nick).catch(() => {})
-      })
-    })
   }
 }
 
@@ -213,24 +90,3 @@ export function initDeepLinks() {
   void onOpenUrl((urls) => urls.forEach(handle)).catch(() => {})
 }
 
-function installPackFromLink(slug: string, title: string): void {
-  runInstall({
-    key: keyCatalogPack(slug),
-    title,
-    running: 'Скачивание…',
-    run: () => installCatalogPack(slug),
-    onError: (e) => {
-      const text = String(e)
-      if (text.startsWith(PACK_ACCESS_PREFIX)) {
-        usePackKey.getState().show(slug, title, text.slice(PACK_ACCESS_PREFIX.length), () => installPackFromLink(slug, title))
-        return
-      }
-      showToast(text, 'error')
-    },
-    onDone: (p) => {
-      useProfiles.getState().setSelected(p.name)
-      void useProfiles.getState().refresh()
-      showToast('Сборка «' + p.name + '» готова к запуску', 'ok', 'achievement')
-    },
-  })
-}

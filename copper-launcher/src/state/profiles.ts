@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { hasTauri } from '../ipc/tauri'
-import { getProfileGroups, listContent, listProfiles, protectedBuilds } from '../ipc/commands'
+import { getProfileGroups, listProfiles } from '../ipc/commands'
 import type { Profile, ProfileGroups } from '../ipc/commands'
 import { DEMO_USER } from '../lib/demo'
 
@@ -10,21 +10,8 @@ const DEMO_PROFILES: Profile[] = [
   { name: 'Minecraft 26.2', version: '26.2', fabric: true, loader: 'fabric', icon: null },
 ]
 
-async function reportInventory(profiles: Profile[]) {
-  if (!hasTauri()) return
-  let mods = 0
-  for (const p of profiles) {
-    try {
-      mods += (await listContent(p.name, 'mod')).length
-    } catch {}
-  }
-  ;
-}
-
 interface ProfilesState {
   profiles: Profile[]
-  /** Builds whose author keeps the contents to themselves: the launcher does not show their files. */
-  guarded: string[]
   selected: string | null
   groups: ProfileGroups
   ctxLocked: boolean
@@ -35,7 +22,6 @@ interface ProfilesState {
 
 export const useProfiles = create<ProfilesState>((set, get) => ({
   profiles: [],
-  guarded: [],
   selected: null,
   groups: {},
   ctxLocked: true,
@@ -54,29 +40,22 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
       profiles = get().profiles.length ? get().profiles : DEMO_PROFILES
     }
     if (!profiles.length) {
-      set({ profiles: [], guarded: [], groups: {} })
-      void reportInventory([])
+      set({ profiles: [], groups: {} })
       return
     }
-    void reportInventory(profiles)
     let groups: ProfileGroups = {}
-    let guarded: string[] = []
     if (hasTauri()) {
       try {
         groups = await getProfileGroups()
       } catch {}
-      // Unreadable means shown as before: the files are on the player's disk either way.
-      guarded = await protectedBuilds().catch(() => [])
     }
     const selected = get().selected || profiles[0].name
-    set({ profiles, guarded, groups, selected })
+    set({ profiles, groups, selected })
   },
 }))
 
 export const refreshProfiles = () => useProfiles.getState().refresh()
 export const selectedProfile = () => useProfiles.getState().selected
 export const profilesList = () => useProfiles.getState().profiles
-export const useGuarded = (name: string | null | undefined): boolean =>
-  useProfiles((s) => !!name && s.guarded.includes(name))
 export const findProfile = (name: string | null) =>
   useProfiles.getState().profiles.find((p) => p.name === name) || null

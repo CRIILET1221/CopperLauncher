@@ -7,7 +7,6 @@ mod secrets;
 mod commands;
 pub mod tray;
 
-mod mic;
 mod packdrop;
 mod display;
 mod webview_health;
@@ -172,8 +171,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        // Запуск вместе с системой (06.10.2026): лаунчер живёт в трее, и
-        // напоминания о сундуке и серии есть кому показать.
+        // Запуск вместе с системой (06.10.2026): лаунчер живёт в трее.
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![commands::system::AUTOSTART_ARG]),
@@ -198,7 +196,6 @@ pub fn run() {
             // Official self-reinstallation is disabled for this telemetry-free fork.
             engine::arm_dialogs(app.handle());
             if let Some(w) = app.get_webview_window("main") {
-                mic::allow_microphone(&w);
                 webview_health::watch(&w);
             }
             packdrop::watch(app.handle());
@@ -249,7 +246,6 @@ pub fn run() {
             commands::games::store_games_state,
             commands::games::store_game_open,
             commands::games::store_game_install,
-            commands::games::bedrock_join,
             commands::content::install_mod,
             commands::content::list_versions,
             commands::content::list_versions_typed,
@@ -261,25 +257,11 @@ pub fn run() {
             commands::profiles::install_modpack_version,
             commands::profiles::migrate_plan,
             commands::profiles::migrate_profile,
-            commands::profiles::install_catalog_pack,
-            commands::profiles::install_pack_candidate,
-            commands::profiles::update_catalog_pack,
-            commands::profiles::sync_catalog_pack,
-            commands::profiles::protected_builds,
-            commands::profiles::pack_auto_update,
-            commands::profiles::set_pack_auto_update,
-            commands::profiles::pack_review_candidate,
-            commands::profiles::pack_review_queue,
-            commands::profiles::copper_packs,
-            commands::profiles::redeem_pack_key,
-            commands::profiles::pack_buy_url,
             commands::profiles::cf_install_modpack,
             commands::system::open_url,
             commands::launch::cancel_launch,
             commands::launch::stop_game,
             commands::launch::running_games,
-            commands::launch::set_game_invite,
-            commands::launch::claim_game_invites,
             commands::system::game_dir,
             commands::system::set_game_dir,
             commands::system::pick_game_dir,
@@ -300,8 +282,6 @@ pub fn run() {
             commands::accounts::discord_reconnect,
             commands::accounts::discord_clear,
             commands::content::install_content,
-            commands::content::catalog_install,
-            commands::content::catalog_install_plan,
             commands::content::list_content,
             commands::content::dep_plan,
             commands::content::install_dep_items,
@@ -318,8 +298,6 @@ pub fn run() {
             commands::profiles::load_profile_settings,
             commands::profiles::set_profile_gpu,
             commands::profiles::gpu_switch_supported,
-            commands::profiles::skin_mod_state,
-            commands::profiles::set_skin_mod,
             commands::profiles::fps_boost_state,
             commands::profiles::set_fps_boost,
             commands::profiles::scan_imports,
@@ -369,7 +347,6 @@ pub fn run() {
             commands::content::cf_project,
             commands::content::cf_files,
             commands::content::cf_install_world,
-            commands::content::install_catalog_file,
             commands::content::list_world_installs,
             commands::content::active_installs,
             commands::content::cancel_install,
@@ -398,10 +375,7 @@ pub fn run() {
             commands::profiles::update_modpack,
             commands::profiles::modpack_info,
             commands::profiles::list_screenshots,
-            commands::accounts::copper_logout,
             commands::accounts::session_status,
-            commands::accounts::set_local_skin,
-            commands::accounts::skin_diagnose,
             commands::accounts::list_textures,
             commands::accounts::save_texture,
             commands::accounts::fetch_texture,
@@ -444,15 +418,6 @@ pub fn run() {
             commands::profiles::screenshot_gallery,
             commands::profiles::delete_screenshot,
             commands::profiles::save_screenshot_as,
-            commands::profiles::share_screenshot,
-            commands::profiles::share_profile,
-            commands::profiles::unshare_profile,
-            commands::profiles::pack_preview,
-            commands::profiles::install_shared_pack,
-            commands::profiles::cloud_status,
-            commands::profiles::cloud_push,
-            commands::profiles::cloud_pull,
-            commands::profiles::cloud_forget,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -582,7 +547,7 @@ mod tests {
             "these Tauri commands look like direct access to the secret vault: {leaking:?}. \
              Anything in generate_handler! can be invoked from the webview, so such a command \
              lets any XSS read or overwrite stored tokens. Secrets must stay inside Rust: expose \
-             a command that performs the authenticated action (see copper_api_auth) instead of \
+             a command that performs the authenticated action (as the Microsoft login commands do) instead of \
              one that returns the secret value.",
         );
     }
@@ -613,7 +578,7 @@ mod tests {
                  would let it back into generate_handler! unnoticed.",
             );
         }
-        for name in ["app_version", "copper_api", "ms_session_refresh", "list_profiles", "head_avatar"] {
+        for name in ["app_version", "ms_session_refresh", "list_profiles", "head_avatar"] {
             assert!(
                 !looks_like_vault_access(name),
                 "the heuristic flags the legitimate command `{name}`; it is too broad and would \

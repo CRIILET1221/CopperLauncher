@@ -41,11 +41,7 @@ export function loadHead(nick?: string, kind?: string, px = headPx(32)): Promise
   const running = inflight.get(key)
   if (running) return running
   const task = (
-    hasTauri()
-      ? headAvatar(real, px)
-      : Promise.resolve(
-          'copper-disabled://removed-service/v2/heads/avatar/' + encodeURIComponent(real) + '?size=' + px,
-        )
+    hasTauri() ? headAvatar(real, px) : Promise.reject(new Error('головы рисует ядро'))
   )
     .then((url) => {
       mem.set(key, url)
